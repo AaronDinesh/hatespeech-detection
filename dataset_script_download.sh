@@ -1,0 +1,2 @@
+# https://drive.google.com/file/d/1S9mMhZFkntNnYdO-1dZXwF_8XIiFcmlF/view
+curl 'https://drive.usercontent.google.com/download?id=1S9mMhZFkntNnYdO-1dZXwF_8XIiFcmlF&export=download&authuser=0&confirm=t&uuid=db0e5b73-4ef4-45a4-b8f9-ef6f9c774473&at=APcmpozKaSM48fu1xNnp1-SNKDp1:1745766661322' > MMHS150K.zip
