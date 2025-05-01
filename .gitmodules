@@ -1,3 +1,6 @@
 [submodule "MultiModN"]
 	path = MultiModN
 	url = git@github.com:EPFLiGHT/MultiModN.git
+[submodule "Vilio"]
+	path = Vilio
+	url = git@github.com:Muennighoff/vilio.git
