@@ -2,3 +2,10 @@ MMHS150K
 MMHS150K.zip
 papers
 .ipynb_checkpoints/
+/data*
+**/.venv
+**/.env
+**/llm_responses/
+**/processed_prompts/
+**/.vscode
+
