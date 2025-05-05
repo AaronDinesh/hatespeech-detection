@@ -44,8 +44,8 @@ def construct_prompts(LLM_PROMPT: str, image_data: base64, image_text: str, twee
                 "role": "user",
                 "content": [
                     {
-                        "type": "input_image",
-                        "input_image": {
+                        "type": "image_url",
+                        "image_url": {
                             "url": f"data:image/jpeg;base64,{image_data}",
                             "detail": "high",
                         },
