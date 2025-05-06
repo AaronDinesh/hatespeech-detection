@@ -13,11 +13,9 @@ def json_generator(filepath: str):
             
 
 def main():
-    filepath = './processed_prompts/iteration_1/prompts.jsonl.gz'
+    filepath = './llm_responses/MMHS150K/Llama-4-Scout-17B-16E-Instruct/results.jsonl.gz'
     for line in json_generator(filepath):
-        tweet_idx = line['id']
-        print(line['prompt'])
-        break
+        print(line)
 
 
 if __name__ == "__main__":

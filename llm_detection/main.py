@@ -170,4 +170,4 @@ if __name__ == "__main__":
     parser.add_argument("--input_file", type=str, required=True, help="Input .jsonl.gz prompts file")
     parser.add_argument("--output_dir", type=str, required=True, help="Output directory path")
     parser.add_argument("--model", type=str, choices=model_choices, required=True, help="The LLM to use")
-    asyncio.run(main(base_url, RCP_AIaaS_KEY, parser))
+    main(base_url, RCP_AIaaS_KEY, parser)
