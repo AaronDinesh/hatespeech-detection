@@ -38,8 +38,8 @@ def is_valid_prompt(entry: dict) -> Tuple[bool, Optional[str]]:
     for item in content:
         if item.get("type") == "text":
             has_text = True
-        elif item.get("type") == "input_image":
-            url = item.get("input_image", {}).get("url")
+        elif item.get("type") == "image_url":
+            url = item.get("image_url", {}).get("url")
             if isinstance(url, str) and is_valid_base64_image_url(url):
                 has_valid_image = True
 
