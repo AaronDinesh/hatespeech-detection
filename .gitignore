@@ -8,4 +8,5 @@ papers
 **/llm_responses/
 **/processed_prompts/
 **/.vscode
+**/build_docker_image.sh
 
