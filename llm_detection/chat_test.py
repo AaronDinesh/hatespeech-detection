@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 from openai import OpenAI
-
+from dotenv import load_dotenv
+import os
 
 def main():
+    load_dotenv()
+    RCP_AIaaS_KEY = os.getenv("OPENAI_API_KEY")
+
+
     # OpenAI API configuration
     client = OpenAI(
         base_url="https://inference-dev.rcp.epfl.ch/v1",
-        # api_key="", # You can configure the API key in your code
+        api_key=RCP_AIaaS_KEY
     )
 
     messages = [

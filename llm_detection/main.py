@@ -193,7 +193,8 @@ def main(base_url: str, RCP_AIaaS_KEY: str, parser: argparse.ArgumentParser) -> 
             for line in tqdm(f, desc="Loading completed ids...", leave=False, unit=" prompts"):
                 try:
                     json_line = json.loads(line)
-                    completed_ids.add(json_line['id'])
+                    if json_line['response'] is not None:
+                        completed_ids.add(json_line['id'])
                 except Exception as e:
                     print(f"JSON decode error: {e}")
                     raise Exception
