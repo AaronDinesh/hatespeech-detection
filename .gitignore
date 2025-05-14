@@ -9,4 +9,5 @@ papers
 **/processed_prompts/
 **/.vscode
 **/build_docker_image.sh
+external/vilio/data
 
