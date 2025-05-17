@@ -2,7 +2,6 @@ import argparse
 import json
 import gzip
 import pandas as pd
-import numpy as np
 from tqdm import tqdm
 import os
 import pydantic
@@ -95,6 +94,7 @@ class HatefulMatcher:
             "True-Positive": 0,
             "False-Negative": 0,
             "True-Negative": 0,
+            "Count": 0
         }
 
     def update_scores(self, ground_truth: tuple[str, list[str]], llm_output: tuple[str, list[str]]):
@@ -104,6 +104,8 @@ class HatefulMatcher:
         ground_truth_hate = sum([labels_mapping[label] for label in ground_truth[1]]) > 0
         llm_output_hate = sum([labels_mapping[label] for label in llm_output[1]]) > 0
 
+
+        self.results["Count"] += 1
         # Compute the scores for analysis later
         if ground_truth_hate and llm_output_hate:
             self.results["True-Positive"] += 1
@@ -117,6 +119,17 @@ class HatefulMatcher:
     
     def get_results(self):
         return self.results
+    
+    def get_metrics(self):
+        """
+        Computes the Precision, Accuracy, Recall and F1 score
+        """
+        return {
+            "Accuracy": (self.results["True-Positive"] + self.results["True-Negative"]) / self.results["Count"],
+            "Recall": self.results["True-Positive"] / (self.results["True-Positive"] + self.results["False-Negative"]),
+            "Precision": self.results["True-Positive"] / (self.results["True-Positive"] + self.results["False-Positive"]),
+            "F1": self.results["True-Positive"] / (self.results["True-Positive"] + 0.5*(self.results["False-Positive"] + self.results["False-Negative"]))
+        }
 
 
 def json_generator(filepath: str):
@@ -169,6 +182,7 @@ def main(parser: argparse.ArgumentParser):
 
     print("Results:")
     print(hateful_matcher.get_results())
+    print(hateful_matcher.get_metrics())
     print(label_matcher.get_results())
 
 

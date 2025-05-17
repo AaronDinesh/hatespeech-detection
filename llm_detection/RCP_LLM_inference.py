@@ -1,3 +1,8 @@
+"""
+A script that calls to the AIaaS LLM inference endpoint using a prompts.jsonl.gz file. The prompts should be encoded in
+the OpenAI format
+"""
+
 from dotenv import load_dotenv
 import os
 import requests

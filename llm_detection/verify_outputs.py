@@ -1,3 +1,9 @@
+"""
+A script that checks the output from RCP_LLM_inference.py and displayes all errors. Can fix these errors according to
+some predetermined rules.
+"""
+
+
 import gzip
 import json
 import pydantic

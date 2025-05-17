@@ -2,6 +2,10 @@ import pandas as pd
 import json
 import ast
 
+"""
+Finds all the unique labels in the dataset.
+"""
+
 df = pd.read_json("../data/MMHS150K/MMHS150K_GT.json", lines=False, orient='index', convert_dates=False, convert_axes=False, dtype=str)
 
 

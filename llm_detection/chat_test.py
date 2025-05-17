@@ -3,6 +3,10 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 
+"""
+A script that checks if you can connect to the AIaaS LLM inference endpoint.
+"""
+
 def main():
     load_dotenv()
     RCP_AIaaS_KEY = os.getenv("OPENAI_API_KEY")

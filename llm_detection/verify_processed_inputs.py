@@ -1,3 +1,7 @@
+"""
+A script that verifies the output of process_inputs_multiprocessing.py. Prints any errors.
+"""
+
 import json
 import gzip
 import argparse

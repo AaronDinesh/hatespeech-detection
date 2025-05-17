@@ -1,3 +1,8 @@
+"""
+A script that uses multiprocessing to convert the raw data into prompts that can be used with the RCP AIaaS LLM
+inference endpoint or any OpenAI compatible endpoint.
+"""
+
 import os
 import base64
 import requests
