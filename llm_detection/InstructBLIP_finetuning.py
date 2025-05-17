@@ -19,6 +19,7 @@ import ast
 import json
 from dotenv import load_dotenv
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
+import argparse
 
 
 #-------------- Config parameters --------------#
@@ -135,11 +136,11 @@ def compute_metrics(eval_pred):
     return {"eval_accuracy": acc, "eval_f1": f1}
 
     
-def main():
+def main(args):
     load_dotenv()
-    image_path = "../data/MMHS150K/img_resized"
-    image_text_path= "../data/MMHS150K/img_txt"
-    dataset_json_path = "../data/MMHS150K/MMHS150K_GT.json"
+    image_path = args.image_path
+    image_text_path = args.image_text_path
+    dataset_json_path = args.dataset_json_path
     WANDB_API_KEY = os.getenv("WANDB_API_KEY")
     wandb.login(key=WANDB_API_KEY)
     wandb.init(project=PROJECT, name=RUN_NAME)
@@ -164,12 +165,12 @@ def main():
 
 
 
-    training_dataset = MMHSDataset(image_path, image_text_path, dataset_json_path, "../data/MMHS150K/splits/train_ids.txt", processor)
-    validation_dataset = MMHSDataset(image_path, image_text_path, dataset_json_path, "../data/MMHS150K/splits/val_ids.txt", processor)
-    testing_dataset = MMHSDataset(image_path, image_text_path, dataset_json_path, "../data/MMHS150K/splits/test_ids.txt", processor)
+    training_dataset = MMHSDataset(image_path, image_text_path, dataset_json_path, f"{args.splits_path}/train_ids.txt", processor)
+    validation_dataset = MMHSDataset(image_path, image_text_path, dataset_json_path, f"{args.splits_path}/val_ids.txt", processor)
+    testing_dataset = MMHSDataset(image_path, image_text_path, dataset_json_path, f"{args.splits_path}/test_ids.txt", processor)
 
     args = TrainingArguments(
-        output_dir="./out_ib",
+        output_dir="/workspace/output/out_ib",
         per_device_train_batch_size=8,
         per_device_eval_batch_size=8,
         gradient_accumulation_steps=4,
@@ -197,8 +198,8 @@ def main():
         compute_metrics=compute_metrics
     )
 
-    trainer.train()
-    trainer.save_model("./saved_instructblip_classifier_finetuned")
+    trainer.train(resume_from_checkpoint=True)
+    trainer.save_model("/workspace/output/saved_instructblip_classifier_finetuned")
 
     logs = trainer.state.log_history
     train_steps = [x["step"] for x in logs if "loss" in x and "eval_loss" not in x]
@@ -251,4 +252,10 @@ def main():
     print(f"  Recall       : {recall:.4f}")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset_json_path", type=str, required=True, help="Path to the MMHS150K_GT.json file")
+    parser.add_argument("--image_path", type=str, required=True, help="Path to the MMHS150K images")
+    parser.add_argument("--image_text_path", type=str, required=True, help="Path to the MMHS150K image text")
+    parser.add_argument("--splits_path", type=str, required=True, help="Path to the train-test-split.csv file")
+    args = parser.parse_args()
+    main(args)
