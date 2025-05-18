@@ -89,5 +89,5 @@ def main(parser: argparse.ArgumentParser):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--file_path", type=str, required=True, help="Path to the .jsonl.gz file to validate")
+    parser.add_argument("--file-path", type=str, required=True, help="Path to the .jsonl.gz file to validate")
     main(parser)

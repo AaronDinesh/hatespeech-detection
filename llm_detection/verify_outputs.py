@@ -17,24 +17,37 @@ from dotenv import load_dotenv
 from tqdm import tqdm
 from enum import Enum
 
+# class labels(str, Enum):
+#     NotHate = 'NotHate'
+#     Racist = 'Racist'
+#     Sexist = 'Sexist'
+#     Homophobe = 'Homophobe'
+#     Religion = 'Religion'
+#     OtherHate = 'OtherHate'
+
+
 class labels(str, Enum):
     NotHate = 'NotHate'
-    Racist = 'Racist'
-    Sexist = 'Sexist'
-    Homophobe = 'Homophobe'
-    Religion = 'Religion'
-    OtherHate = 'OtherHate'
+    HateSpeech = 'HateSpeech'
 
 class postDescription(pydantic.BaseModel):
     input_labels: list[labels]
 
 
+# Allowed_labels = typing.Literal[
+#     "NotHate", "Racist", "Sexist", "Homophobe", "Religion", "OtherHate"
+# ]
+
+# class Response_schema(pydantic.BaseModel):
+#     input_labels: pydantic.conlist(Allowed_labels, min_length=3, max_length=3)
+
+
 Allowed_labels = typing.Literal[
-    "NotHate", "Racist", "Sexist", "Homophobe", "Religion", "OtherHate"
+    "NotHate", "HateSpeech"
 ]
 
 class Response_schema(pydantic.BaseModel):
-    input_labels: pydantic.conlist(Allowed_labels, min_length=3, max_length=3)
+    input_labels: pydantic.conlist(Allowed_labels, min_length=1, max_length=1)
 
 class Output_schema(pydantic.BaseModel):
     id: str

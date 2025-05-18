@@ -21,23 +21,20 @@ import time
 import typing
 
 ############## PROMPT SCHEMAS ##################
+# class labels(str, Enum):
+#     NotHate = 'NotHate'
+#     Racist = 'Racist'
+#     Sexist = 'Sexist'
+#     Homophobe = 'Homophobe'
+#     Religion = 'Religion'
+#     OtherHate = 'OtherHate'
+
 class labels(str, Enum):
     NotHate = 'NotHate'
-    Racist = 'Racist'
-    Sexist = 'Sexist'
-    Homophobe = 'Homophobe'
-    Religion = 'Religion'
-    OtherHate = 'OtherHate'
+    HateSpeech = 'HateSpeech'
 
 class postDescription(BaseModel):
     input_labels: list[labels]
-
-Allowed_labels = typing.Literal[
-    "NotHate", "Racist", "Sexist", "Homophobe", "Religion", "OtherHate"
-]
-
-class Response_schema(BaseModel):
-    input_labels: conlist(Allowed_labels, min_length=3, max_length=3)
 
 
 ################################################

@@ -137,7 +137,7 @@ def compute_metrics(eval_pred):
 
     
 def main(args):
-    load_dotenv()
+    load_dotenv("/mnt/envs/.env")
     image_path = args.image_path
     image_text_path = args.image_text_path
     dataset_json_path = args.dataset_json_path

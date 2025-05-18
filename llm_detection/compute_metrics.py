@@ -9,11 +9,14 @@ import typing
 import ast
 
 Allowed_labels = typing.Literal[
-    "NotHate", "Racist", "Sexist", "Homophobe", "Religion", "OtherHate"
+    "NotHate", "Racist", "Sexist", "Homophobe", "Religion", "OtherHate", "HateSpeech"
 ]
 
+# class Response_schema(pydantic.BaseModel):
+#     input_labels: pydantic.conlist(Allowed_labels, min_length=3, max_length=3)
+
 class Response_schema(pydantic.BaseModel):
-    input_labels: pydantic.conlist(Allowed_labels, min_length=3, max_length=3)
+    input_labels: pydantic.conlist(Allowed_labels, min_length=1, max_length=1)
 
 class Output_schema(pydantic.BaseModel):
     id: str
@@ -21,7 +24,7 @@ class Output_schema(pydantic.BaseModel):
 
 
 # All the allowed labels
-labels = ["NotHate", "Racist", "Sexist", "Homophobe", "Religion", "OtherHate"]
+labels = ["NotHate", "Racist", "Sexist", "Homophobe", "Religion", "OtherHate", "HateSpeech"]
 
 
 # The label mapping (whether the label is hate or not)
@@ -32,6 +35,7 @@ labels_mapping = {
     "Homophobe": 1,
     "Religion": 1,
     "OtherHate": 1
+    "HateSpeech": 1
 }
 
 
@@ -130,6 +134,52 @@ class HatefulMatcher:
             "Precision": self.results["True-Positive"] / (self.results["True-Positive"] + self.results["False-Positive"]),
             "F1": self.results["True-Positive"] / (self.results["True-Positive"] + 0.5*(self.results["False-Positive"] + self.results["False-Negative"]))
         }
+    
+class HateNotHateMatcher():
+    def __init__(self):
+        self.results = {
+            "False-Positive": 0,
+            "True-Positive": 0,
+            "False-Negative": 0,
+            "True-Negative": 0,
+            "Count": 0
+        }
+
+    def update_scores(self, ground_truth: tuple[str, list[str]], llm_output: tuple[str, list[str]]):
+        assert ground_truth[0] == llm_output[0], "The ids of the ground truth and llm output must be the same"
+
+        # This will be 1 if it is hateful, 0 otherwise
+        ground_truth_hate = 1 if "HateSpeech" in ground_truth[1] else 0
+        llm_output_hate = 1 if "HateSpeech" in llm_output[1] else 0
+
+
+        self.results["Count"] += 1
+        # Compute the scores for analysis later
+        if ground_truth_hate and llm_output_hate:
+            self.results["True-Positive"] += 1
+        elif ground_truth_hate and not llm_output_hate:
+            self.results["False-Negative"] += 1
+        elif not ground_truth_hate and llm_output_hate:
+            self.results["False-Positive"] += 1
+        elif not ground_truth_hate and not llm_output_hate:
+            self.results["True-Negative"] += 1
+
+    
+    def get_results(self):
+        return self.results
+    
+    def get_metrics(self):
+        """
+        Computes the Precision, Accuracy, Recall and F1 score
+        """
+        return {
+            "Accuracy": (self.results["True-Positive"] + self.results["True-Negative"]) / self.results["Count"],
+            "Recall": self.results["True-Positive"] / (self.results["True-Positive"] + self.results["False-Negative"]),
+            "Precision": self.results["True-Positive"] / (self.results["True-Positive"] + self.results["False-Positive"]),
+            "F1": self.results["True-Positive"] / (self.results["True-Positive"] + 0.5*(self.results["False-Positive"] + self.results["False-Negative"]))
+        }
+
+
 
 
 def json_generator(filepath: str):
