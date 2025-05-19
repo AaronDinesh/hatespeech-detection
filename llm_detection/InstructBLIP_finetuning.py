@@ -137,17 +137,19 @@ def compute_metrics(eval_pred):
 
     
 def main(args):
-    load_dotenv("/mnt/envs/.env")
     image_path = args.image_path
     image_text_path = args.image_text_path
     dataset_json_path = args.dataset_json_path
+    env_path = args.env_file
+    model_path = args.model_path
+    load_dotenv(env_path)
     WANDB_API_KEY = os.getenv("WANDB_API_KEY")
     wandb.login(key=WANDB_API_KEY)
     wandb.init(project=PROJECT, name=RUN_NAME)
 
-    processor = AutoProcessor.from_pretrained(MODEL_NAME)
+    processor = AutoProcessor.from_pretrained(model_path)
     base_model = BlipForConditionalGeneration.from_pretrained(
-        MODEL_NAME,
+        model_path,
         torch_dtype=torch.float16,
         device_map="auto",
         quantization_config=BitsAndBytesConfig(load_in_8bit=True),
@@ -257,5 +259,7 @@ if __name__ == "__main__":
     parser.add_argument("--image_path", type=str, required=True, help="Path to the MMHS150K images")
     parser.add_argument("--image_text_path", type=str, required=True, help="Path to the MMHS150K image text")
     parser.add_argument("--splits_path", type=str, required=True, help="Path to the train-test-split.csv file")
+    parser.add_argument("--model-path", type=str, required=True, help="Path to the model files")
+    parser.add_argument("--env-file", type=str, required=True, help="Path to the .env file")
     args = parser.parse_args()
     main(args)

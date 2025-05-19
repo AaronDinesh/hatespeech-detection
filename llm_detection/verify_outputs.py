@@ -41,6 +41,7 @@ class postDescription(pydantic.BaseModel):
 # class Response_schema(pydantic.BaseModel):
 #     input_labels: pydantic.conlist(Allowed_labels, min_length=3, max_length=3)
 
+ALLOWED_LENGTH = 1
 
 Allowed_labels = typing.Literal[
     "NotHate", "HateSpeech"
@@ -123,6 +124,7 @@ def main(args):
                 results["valid"] += 1
             except pydantic.ValidationError as e:
                 print(f"ID {line['id']} failed because {e}")
+                print(f"ID {line['id']}: {line['response']['input_labels']}")
                 results["invalid"] += 1
                 results["errors"].append(f"ID {line["id"]} failed because {e}")
     
@@ -167,17 +169,17 @@ def main(args):
 
 
                 except pydantic.ValidationError as e:
-                    #We assumming that if the model outputs less than 3 labels, it means that it wants to duplicate the
+                    #We assumming that if the model outputs less than ALLOWED_LENGTH labels, it means that it wants to duplicate the
                     #last label. Meaning that if we have a label like ['NotHate', 'Racist'], it means that the model
                     #also thought the last judge would say racist and therefore compressed the returned labels. In the
-                    #case of ['NotHate'] it means that all 3 judges would have said 'NotHate'. In the case where the
-                    #model output more then 3 labels, we just truncate to the first 3
+                    #case of ['NotHate'] it means that all ALLOWED_LENGTH judges would have said 'NotHate'. In the case where the
+                    #model output more then ALLOWED_LENGTH labels, we just truncate to the first ALLOWED_LENGTH.
                     
                     ##print(f"ID {line['id']} failed because {e}\n")
                     prev_length = len(line['response']['input_labels'])
-                    if prev_length < 3 and prev_length != 0:
+                    if prev_length < ALLOWED_LENGTH and prev_length != 0:
                         if line['id'] in unique_ids:
-                            for _ in range(prev_length, 3):
+                            for _ in range(prev_length, ALLOWED_LENGTH):
                                 line['response']['input_labels'].append(line['response']['input_labels'][-1]) 
                             g.write(json.dumps(line) + "\n")
 
@@ -195,7 +197,7 @@ def main(args):
                         pass
                     else:
                         if line['id'] in unique_ids:
-                            line['response']['input_labels'] = line['response']['input_labels'][:3]
+                            line['response']['input_labels'] = line['response']['input_labels'][:ALLOWED_LENGTH]
                             g.write(json.dumps(line) + "\n")
                             unique_ids.remove(line['id'])
 

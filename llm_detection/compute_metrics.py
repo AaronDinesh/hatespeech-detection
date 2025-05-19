@@ -8,6 +8,7 @@ import pydantic
 import typing
 import ast
 
+
 Allowed_labels = typing.Literal[
     "NotHate", "Racist", "Sexist", "Homophobe", "Religion", "OtherHate", "HateSpeech"
 ]
@@ -34,7 +35,7 @@ labels_mapping = {
     "Sexist": 1,
     "Homophobe": 1,
     "Religion": 1,
-    "OtherHate": 1
+    "OtherHate": 1,
     "HateSpeech": 1
 }
 
@@ -100,14 +101,19 @@ class HatefulMatcher:
             "True-Negative": 0,
             "Count": 0
         }
+    
+    def compute_majority(self, labels: list[str]):
+        num_hate = sum(1 for label in labels[1] if labels_mapping[label] == 1)
+        num_total = len(labels)
+        return num_hate > num_total / 2
 
     def update_scores(self, ground_truth: tuple[str, list[str]], llm_output: tuple[str, list[str]]):
         assert ground_truth[0] == llm_output[0], "The ids of the ground truth and llm output must be the same"
 
-        # This will be 1 if it is hateful, 0 otherwise
-        ground_truth_hate = sum([labels_mapping[label] for label in ground_truth[1]]) > 0
-        llm_output_hate = sum([labels_mapping[label] for label in llm_output[1]]) > 0
-
+        # This will be 1 if it is hateful, 0 otherwise        
+        ground_truth_hate = self.compute_majority(ground_truth)
+        llm_output_hate = self.compute_majority(llm_output)
+    
 
         self.results["Count"] += 1
         # Compute the scores for analysis later
@@ -134,6 +140,9 @@ class HatefulMatcher:
             "Precision": self.results["True-Positive"] / (self.results["True-Positive"] + self.results["False-Positive"]),
             "F1": self.results["True-Positive"] / (self.results["True-Positive"] + 0.5*(self.results["False-Positive"] + self.results["False-Negative"]))
         }
+    
+    def plot_confusion(self, save_dir: str):
+        raise NotImplementedError
     
 class HateNotHateMatcher():
     def __init__(self):
@@ -145,12 +154,26 @@ class HateNotHateMatcher():
             "Count": 0
         }
 
+        self.true_hate = 0
+        self.true_not_hate = 0
+    
+    def compute_majority(self, labels: list[str]):
+        num_hate = sum(1 for label in labels[1] if labels_mapping[label] == 1)
+        num_total = len(labels)
+        return num_hate > num_total / 2
+
+
     def update_scores(self, ground_truth: tuple[str, list[str]], llm_output: tuple[str, list[str]]):
         assert ground_truth[0] == llm_output[0], "The ids of the ground truth and llm output must be the same"
 
         # This will be 1 if it is hateful, 0 otherwise
-        ground_truth_hate = 1 if "HateSpeech" in ground_truth[1] else 0
+        ground_truth_hate = self.compute_majority(ground_truth)
         llm_output_hate = 1 if "HateSpeech" in llm_output[1] else 0
+
+        if ground_truth_hate:
+            self.true_hate += 1
+        else:
+            self.true_not_hate += 1
 
 
         self.results["Count"] += 1
@@ -166,6 +189,7 @@ class HateNotHateMatcher():
 
     
     def get_results(self):
+        print(f"GT NotHate: {self.true_not_hate}, GT Hate: {self.true_hate}")
         return self.results
     
     def get_metrics(self):
@@ -178,8 +202,9 @@ class HateNotHateMatcher():
             "Precision": self.results["True-Positive"] / (self.results["True-Positive"] + self.results["False-Positive"]),
             "F1": self.results["True-Positive"] / (self.results["True-Positive"] + 0.5*(self.results["False-Positive"] + self.results["False-Negative"]))
         }
-
-
+    
+    def plot_confusion(self, save_dir: str):
+        raise NotImplementedError
 
 
 def json_generator(filepath: str):
@@ -198,9 +223,13 @@ def main(parser: argparse.ArgumentParser):
     ground_truth = args.ground_truth
     llm_output = args.llm_output
     train_test_split = args.train_test_split
-
-    hateful_matcher = HatefulMatcher()
-    label_matcher = LabelMatcher()
+    binary_labels = args.binary_labels
+    
+    if binary_labels: 
+        hate_not_hate_matcher = HateNotHateMatcher()
+    else:
+        hateful_matcher = HatefulMatcher()
+        label_matcher = LabelMatcher()
 
     if not os.path.exists(llm_output):
         print(f"Error: {llm_output} does not exist")
@@ -227,13 +256,22 @@ def main(parser: argparse.ArgumentParser):
         #Parse the ground truth into a Python list
         ground_truth_labels = ast.literal_eval(id_to_labels[str(parsed_llm_output.id)])
 
-        hateful_matcher.update_scores((parsed_llm_output.id, ground_truth_labels), (parsed_llm_output.id, parsed_llm_output.response.input_labels))
-        label_matcher.update_scores((parsed_llm_output.id, ground_truth_labels), (parsed_llm_output.id, parsed_llm_output.response.input_labels))
+        if binary_labels:
+            hate_not_hate_matcher.update_scores((parsed_llm_output.id, ground_truth_labels), (parsed_llm_output.id, parsed_llm_output.response.input_labels))
+        else:
+            hateful_matcher.update_scores((parsed_llm_output.id, ground_truth_labels), (parsed_llm_output.id, parsed_llm_output.response.input_labels))
+            label_matcher.update_scores((parsed_llm_output.id, ground_truth_labels), (parsed_llm_output.id, parsed_llm_output.response.input_labels))
 
     print("Results:")
-    print(hateful_matcher.get_results())
-    print(hateful_matcher.get_metrics())
-    print(label_matcher.get_results())
+    if binary_labels:
+        print(hate_not_hate_matcher.get_results())
+        print(hate_not_hate_matcher.get_metrics())
+        hate_not_hate_matcher.plot_confusion()
+    else:
+        print(hateful_matcher.get_results())
+        print(hateful_matcher.get_metrics())
+        hateful_matcher.plot_confusion()
+        print(label_matcher.get_results())
 
 
 if __name__ == "__main__":
@@ -241,6 +279,7 @@ if __name__ == "__main__":
     parser.add_argument("--ground-truth", type=str, required=True, help="Path to the MMHS150K_GT.json file")
     parser.add_argument("--llm-output", type=str, required=True, help="Path to the output .jsonl.gz file")
     parser.add_argument("--train-test-split", type=str, help="Path to the train-test-split.csv file")
+    parser.add_argument("--binary-labels", action='store_true', help="Whether the output has binary labels or not")
     main(parser)
 
 
