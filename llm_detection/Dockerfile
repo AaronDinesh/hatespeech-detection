@@ -43,12 +43,6 @@ RUN apt install python3-pip --no-install-recommends curl ca-certificates -y
 WORKDIR /home/${LDAP_USERNAME}
 USER ${LDAP_USERNAME}
 
-# Install uv 
-#ADD https://astral.sh/uv/install.sh /uv-installer.sh
-#RUN sh /uv-installer.sh && rm /uv-installer.sh
-#ENV PATH="/root/.local/bin/:$PATH"
-#COPY --from=ghcr.io/astral-sh/uv:0.7.3 /uv /uvx /bin/
-
 # Install additional dependencies
 # Dont need to do this since we are using uv
 RUN pip install -r requirements.txt
