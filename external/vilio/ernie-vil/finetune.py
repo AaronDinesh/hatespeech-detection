@@ -117,7 +117,7 @@ def create_vcr_model(pyreader_name, ernie_config, task_group, is_prediction=Fals
         capacity       = 30,
         iterable       = False,
         use_double_buffer = False,
-        name           = pyreader_name,
+        return_list       = False  
     )
 
     # In Paddle 2.x the DataLoader itself is the list of inputs
