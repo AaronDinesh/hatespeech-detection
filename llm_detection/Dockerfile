@@ -37,7 +37,7 @@ RUN apt-get update && \
 #####################################
 USER ${LDAP_USERNAME}
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r /home/${LDAP_USERNAME}/llm_detection/requirements.txt
 
 #####################################
 # Ensure local bin is on PATH (safe fallback)

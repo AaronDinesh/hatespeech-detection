@@ -17,7 +17,7 @@ Allowed_labels = typing.Literal[
 #     input_labels: pydantic.conlist(Allowed_labels, min_length=3, max_length=3)
 
 class Response_schema(pydantic.BaseModel):
-    input_labels: pydantic.conlist(Allowed_labels, min_length=1, max_length=1)
+    input_labels: pydantic.conlist(Allowed_labels, min_length=3, max_length=3)
 
 class Output_schema(pydantic.BaseModel):
     id: str
@@ -224,6 +224,7 @@ def main(parser: argparse.ArgumentParser):
     llm_output = args.llm_output
     train_test_split = args.train_test_split
     binary_labels = args.binary_labels
+    plot_save_dir = args.plot_save_dir
     
     if binary_labels: 
         hate_not_hate_matcher = HateNotHateMatcher()
@@ -266,12 +267,12 @@ def main(parser: argparse.ArgumentParser):
     if binary_labels:
         print(hate_not_hate_matcher.get_results())
         print(hate_not_hate_matcher.get_metrics())
-        hate_not_hate_matcher.plot_confusion()
+        hate_not_hate_matcher.plot_confusion(plot_save_dir)
     else:
         print(hateful_matcher.get_results())
         print(hateful_matcher.get_metrics())
-        hateful_matcher.plot_confusion()
         print(label_matcher.get_results())
+        hateful_matcher.plot_confusion(plot_save_dir)
 
 
 if __name__ == "__main__":
@@ -280,6 +281,7 @@ if __name__ == "__main__":
     parser.add_argument("--llm-output", type=str, required=True, help="Path to the output .jsonl.gz file")
     parser.add_argument("--train-test-split", type=str, help="Path to the train-test-split.csv file")
     parser.add_argument("--binary-labels", action='store_true', help="Whether the output has binary labels or not")
+    parser.add_argument("--plot-save-dir", type=str, help="Path to save the plots")
     main(parser)
 
 
