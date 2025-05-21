@@ -34,6 +34,7 @@ from utils.init import init_checkpoint, init_pretraining_params
 from utils.pandas_scripts import clean_data, double_data
 from args.finetune_args import parser
 
+import paddle
 import paddle.fluid as fluid
 from paddle.fluid.io import DataLoader          
 
@@ -94,12 +95,18 @@ def create_vcr_model(pyreader_name, ernie_config, task_group, is_prediction=Fals
     # inputs = fluid.layers.read_file(pyreader)
     feed_list = []
     for idx, (shape, dtype) in enumerate(zip(shapes, dtypes)):
-        if shape == []:                     # scalar tensor (task_weight, etc.)
-            shp = [1]
-        else:
-            shp = shape
+        # if shape == []:                     # scalar tensor (task_weight, etc.)
+        #     shp = [1]
+        # else:
+        #     shp = shape
+        # feed_list.append(
+        #     fluid.data(name=f"f_{idx}", shape=shp, dtype=dtype)
+        # )
+        shp = [None if s == -1 else s for s in (shape or [1])]
+        if dtype == "float":
+            dtype = "float32"
         feed_list.append(
-            fluid.data(name=f"f_{idx}", shape=shp, dtype=dtype)
+            paddle.static.data(name=f"f_{idx}", shape=shp, dtype=dtype)
         )
 
     # Build a DataLoader that replaces the old py_reader
