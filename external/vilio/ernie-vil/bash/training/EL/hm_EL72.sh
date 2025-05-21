@@ -2,8 +2,8 @@
 
 ### ATT 72
 
-mv ./data/hm/hm_vgattr10100.tsv ./data/hm/HM_gt_img.tsv
-mv ./data/hm/hm_vgattr7272.tsv ./data/hm/HM_img.tsv
+# mv ./data/hm/hm_vgattr10100.tsv ./data/hm/HM_gt_img.tsv
+# mv ./data/hm/hm_vgattr7272.tsv ./data/hm/HM_img.tsv
 
 bash run_finetuning.sh hm conf/hm/model_conf_hm \
 ./data/ernielarge/vocab.txt \
