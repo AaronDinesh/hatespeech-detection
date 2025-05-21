@@ -93,7 +93,6 @@ class MMHS150K:
         
         self.data_length = len(self.df)
 
-
     def __len__(self):
         return self.data_length
     
@@ -351,7 +350,6 @@ def main(args):
     model_path = args.model_path
     model_save_path = args.model_save_path
     checkpoint_save_path = args.checkpoint_save_path
-    MAX_LENGTH = 256
     PROJECT = "mmhs-finetune"
     RUN_NAME = "llava-lora"
 
@@ -421,7 +419,6 @@ def main(args):
         limit_val_batches=5,
         num_sanity_val_steps=0,
         logger=wandb_logger,
-
     )
 
     trainer.fit(model_module)
