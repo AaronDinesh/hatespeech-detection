@@ -48,15 +48,19 @@ class MMHSDataset(Dataset):
             "OtherHate": 5
         }
         self.data_split_ids_path = data_split_ids_path
-        self.dataset_df = pd.read_json(self.dataset_json_path, lines=False, orient='index', convert_dates=False, convert_axes=False, dtype=str)
-        
-        with open(self.data_split_ids_path, "r") as f:
-            self.ids_to_select = [int(line.strip()) for line in f]
-        
-        self.data_length = len(self.ids_to_select)
+        self.dataset_full_df = pd.read_json(self.dataset_json_path, lines=False, orient='index', convert_dates=False, convert_axes=False, dtype=str)
 
-        self.dataset_df = self.dataset_df.iloc[self.ids_to_select]
+
+        with open(self.data_split_ids_path, "r") as f:
+            split_image_ids_int = [int(line.strip()) for line in f]
+        
+        split_image_ids_str = [str(id_val) for id_val in split_image_ids_int]
+
+        
+
+        self.dataset_df = self.dataset_full_df[self.dataset_full_df.index.isin(split_image_ids_str)]
         self.dataset_df.reset_index(inplace=True)
+        self.data_length = len(self.dataset_df)
         self.processor = processor
 
     def __len__(self):
@@ -125,12 +129,82 @@ def collate_fn(batch, proc):
     }
     
 
+
+def compute_metrics(eval_pred: EvalPrediction, processor: AutoProcessor): # Pass processor for tokenizer
+    # logits: [batch, seq_len, vocab]; labels: [batch, seq_len]
+    logits, labels = eval_pred.predictions, eval_pred.label_ids
+    
+    # Get most likely predicted token IDs
+    pred_ids = np.argmax(logits, axis=-1)
+
+    # Decode all predicted tokens (model's actual output string)
+    # skip_special_tokens=True removes padding, EOS, etc.
+    decoded_preds_text = processor.tokenizer.batch_decode(pred_ids,  skip_special_tokens=True)
+    
+    # Decode ground truth labels
+    # Replace -100 (ignore index) with pad_token_id for decoding
+    labels_for_decoding = np.where(labels != -100, labels, processor.tokenizer.pad_token_id)
+    decoded_labels_text = processor.tokenizer.batch_decode(
+        labels_for_decoding,
+        skip_special_tokens=True
+    )
+
+    y_true_sets = []
+    for label_str in decoded_labels_text:
+        # True labels: split, strip, filter empty, then make a set.
+        # We expect these to be the 3 labels from the dataset.
+        true_tags = {tag.strip() for tag in label_str.split(',') if tag.strip()}
+        y_true_sets.append(true_tags)
+
+    y_pred_sets = []
+    for pred_str in decoded_preds_text:
+        # Predicted labels: split, strip, filter empty.
+        predicted_tags_list = [tag.strip() for tag in pred_str.split(',') if tag.strip()]
+        # Take the first 3 valid predicted tags and convert to a set.
+        # This aligns with the instruction to the model to output "exactly three labels"
+        # and our interest in its top 3 outputs.
+        y_pred_sets.append(set(predicted_tags_list[:3])) 
+
+    if len(y_true_sets) != len(y_pred_sets):
+        # This check is more for sanity, lengths should match based on batch size
+        print(f"Warning: Mismatch in number of true ({len(y_true_sets)}) and predicted ({len(y_pred_sets)}) samples.")
+        # Depending on how critical this is, you might return 0 or raise an error.
+        # For now, we'll proceed if possible but accuracy will be affected if lists are misaligned.
+        # However, the zip below will only iterate up to the shorter list length.
+
+    correct_matches = 0
+    for true_set, pred_set in zip(y_true_sets, y_pred_sets):
+        # Exact match of the sets (order-independent, counts matter)
+        if true_set == pred_set:
+            correct_matches += 1
+            
+    accuracy = correct_matches / len(y_true_sets) if len(y_true_sets) > 0 else 0.0
+
+    # Optional: Log some examples to WandB for debugging
+    if wandb.run and len(decoded_preds_text) > 0: # Check if wandb is active
+        try: # Add try-except for wandb logging
+            wandb.log({
+                "eval/example_pred_raw_text": decoded_preds_text[0],
+                "eval/example_label_raw_text": decoded_labels_text[0],
+                "eval/example_pred_set_processed": str(y_pred_sets[0] if y_pred_sets else "N/A"),
+                "eval/example_true_set_processed": str(y_true_sets[0] if y_true_sets else "N/A"),
+            })
+        except Exception as e:
+            print(f"Wandb logging error in compute_metrics: {e}")
+
+
+    return {'accuracy': accuracy}
+
+
+
+
 def main(args):
     image_path = args.image_path
     image_text_path = args.image_text_path
     dataset_json_path = args.dataset_json_path
     env_path = args.env_file
     model_path = os.path.expanduser(args.model_path)
+    checkpoint_save_path = args.checkpoint_save_path
     splits_path = args.splits_path
     model_save_path = args.model_save_path
     load_dotenv(env_path)
@@ -174,32 +248,10 @@ def main(args):
     
     print("Created Model and Training Sets")
     
-    def compute_metrics(eval_pred: EvalPrediction):
-        # logits: [batch, seq_len, vocab]; labels: [batch, seq_len]
-        logits, labels = eval_pred.predictions, eval_pred.label_ids
-        pred_ids = np.argmax(logits, axis=-1)
-
-        # decode all tokens (teacher-forcing outputs)
-        decoded_preds  = proc.tokenizer.batch_decode(pred_ids,  skip_special_tokens=True)
-        decoded_labels = proc.tokenizer.batch_decode(
-            np.where(labels != -100, labels, proc.tokenizer.pad_token_id),
-            skip_special_tokens=True
-        )
-
-        # split on commas, strip whitespace, build sets
-        y_true = [set(lbl.strip().split(','))      for lbl  in decoded_labels]
-        y_pred = [set(pred.strip().split(',')[:3]) for pred in decoded_preds]
-
-        # exact-match on sets (order-independent)
-        correct = [1 if t == p else 0 for t, p in zip(y_true, y_pred)]
-        accuracy = sum(correct) / len(correct) if correct else 0.0
-        return {'accuracy': accuracy}
-
-
 
 
     train_args = TrainingArguments(
-        output_dir="/workspace/output/out_llava",
+        output_dir=f"{checkpoint_save_path}/out_llava",
         per_device_train_batch_size=8,
         per_device_eval_batch_size=8,
         gradient_accumulation_steps=4,
@@ -218,21 +270,23 @@ def main(args):
     )
 
     collate_func = partial(collate_fn, proc=proc)
-
+    compute_metrics_with_proc = partial(compute_metrics, proc=proc)
     trainer = Trainer(
         model=model,
         args=train_args,
         train_dataset=train_ds,
         eval_dataset=val_ds,
         data_collator=collate_func,
-        tokenizer=proc,
-        compute_metrics=compute_metrics
+        tokenizer=proc.tokenizer,
+        compute_metrics=compute_metrics_with_proc
     )
 
 
     # train
     trainer.train()
-    model.save_pretrained('/workspace/output/tuned_llava')
+    model.save_pretrained(f'{model_save_path}/tuned_llava')
+    proc.save_pretrained(f'{model_save_path}/tuned_llava') # Save processor for easy loading later
+    print(f"Fine-tuned LoRA adapters and processor saved to {args.model_save_path}")
 
     # extract metrics
     logs = trainer.state.log_history
@@ -240,11 +294,12 @@ def main(args):
     train_loss = [x['loss'] for x in logs if 'loss' in x]
     val_loss   = [x['eval_loss'] for x in logs if 'eval_loss' in x]
     val_acc    = [x['eval_accuracy'] for x in logs if 'eval_accuracy' in x]
+    eval_log_steps = [x['step'] for x in logs if 'eval_loss' in x] # Evaluation steps
 
     # plot losses
     plt.figure()
     plt.plot(steps, train_loss, label='train_loss')
-    plt.plot(steps, val_loss, label='val_loss')
+    plt.plot(eval_log_steps, val_loss, label='val_loss')
     plt.xlabel('Step')
     plt.ylabel('Loss')
     plt.legend()
@@ -260,22 +315,23 @@ def main(args):
         plt.ylabel('Accuracy')
         plt.legend()
         plt.title('Validation Accuracy')
-        plt.savefig('llava_accuracy.png')
+        plt.savefig(f'{model_save_path}/llava_accuracy.png')
 
     # test set evaluation
     test_metrics = trainer.evaluate(test_dataset=test_ds)
     print('Test metrics:', test_metrics)
-    with open('llava_test_metrics.json','w') as f:
+    with open(f'{model_save_path}/llava_test_metrics.json','w') as f:
         json.dump(test_metrics, f)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_json_path", type=str, required=True, help="Path to the MMHS150K_GT.json file")
-    parser.add_argument("--image_path", type=str, required=True, help="Path to the MMHS150K images")
-    parser.add_argument("--image_text_path", type=str, required=True, help="Path to the MMHS150K image text")
+    parser.add_argument("--dataset-json-path", type=str, required=True, help="Path to the MMHS150K_GT.json file")
+    parser.add_argument("--image-path", type=str, required=True, help="Path to the MMHS150K images")
+    parser.add_argument("--image-text-path", type=str, required=True, help="Path to the MMHS150K image text")
     parser.add_argument("--splits-path", type=str, required=True, help="Path to the train-test-split.csv file")
     parser.add_argument("--model-path", type=str, required=True, help="Path to the model files")
     parser.add_argument("--env-file", type=str, required=True, help="Path to the .env file")
     parser.add_argument("--model-save-path", type=str, required=True, help="Path to save the tuned model files")
+    parser.add_argument("--checkpoint-save-path", type=str, required=True, help="Path to save the checkpoint files")
     args = parser.parse_args()
     main(args)
