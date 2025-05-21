@@ -35,6 +35,7 @@ from utils.pandas_scripts import clean_data, double_data
 from args.finetune_args import parser
 
 import paddle
+paddle.enable_static()
 import paddle.fluid as fluid
 from paddle.fluid.io import DataLoader          
 
