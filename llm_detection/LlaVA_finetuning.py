@@ -33,237 +33,211 @@ NUM_LABELS       = len(ALLOWED_LABELS)
 #----------------------------------------------#
 
 
-
+# In MMHSDataset class:
 class MMHSDataset(Dataset):
-    def __init__(self, image_path: str, image_text_path: str, dataset_json_path: str, data_split_ids_path: str, processor: AutoProcessor):
+    def __init__(self, image_path: str, image_text_path: str, dataset_json_path: str, data_split_ids_path: str): # Processor not strictly needed here
         self.image_path = image_path
         self.image_text_path = image_text_path
-        self.dataset_json_path = dataset_json_path
-        self.labels_mapping = {
-            "NotHate": 0,
-            "Racist": 1,
-            "Sexist": 2,
-            "Homophobe": 3,
-            "Religion": 4,
-            "OtherHate": 5
-        }
-        self.data_split_ids_path = data_split_ids_path
-        self.dataset_full_df = pd.read_json(self.dataset_json_path, lines=False, orient='index', convert_dates=False, convert_axes=False, dtype=str)
+        self.allowed_labels = ALLOWED_LABELS # Make ALLOWED_LABELS accessible
 
+        try:
+            self.dataset_full_df = pd.read_json(dataset_json_path, lines=False, orient='index', convert_dates=False, convert_axes=False, dtype=str)
+        except Exception as e:
+            print(f"ERROR: Failed to load or parse dataset JSON: {dataset_json_path}. Error: {e}")
+            raise
 
-        with open(self.data_split_ids_path, "r") as f:
-            split_image_ids_int = [int(line.strip()) for line in f]
+        try:
+            with open(data_split_ids_path, "r") as f:
+                split_image_ids_int = [int(line.strip()) for line in f if line.strip()]
+        except FileNotFoundError:
+            print(f"ERROR: ID file not found: {data_split_ids_path}")
+            raise
+        except ValueError as e:
+            print(f"ERROR: Could not parse IDs in {data_split_ids_path}. Ensure they are integers. Error: {e}")
+            raise
         
         split_image_ids_str = [str(id_val) for id_val in split_image_ids_int]
-
-        
-
         self.dataset_df = self.dataset_full_df[self.dataset_full_df.index.isin(split_image_ids_str)]
-        self.dataset_df.reset_index(inplace=True)
-        self.data_length = len(self.dataset_df)
-        self.processor = processor
+        self.data_length = len(self.dataset_df) 
+
+        if self.data_length == 0:
+            print(f"WARNING: Dataset for split {data_split_ids_path} is empty after filtering.")
+
+        self.dataset_df.reset_index(inplace=True) 
+        
+        if 'index' in self.dataset_df.columns:
+            self.id_column_name = 'index'
+        elif not self.dataset_df.empty:
+            self.id_column_name = self.dataset_df.columns[0]
+            print(f"Warning: 'index' column not found. Assuming ID column is '{self.id_column_name}'.")
+        else:
+             self.id_column_name = 'index'
+        
+        # self.processor = processor # Not needed if collator does all processing
 
     def __len__(self):
         return self.data_length
-
+    
     def __getitem__(self, idx):
+        if idx >= self.data_length:
+            raise IndexError(f"Index {idx} out of bounds for dataset of length {self.data_length}")
+        
         row = self.dataset_df.iloc[idx]
-        image_id   = row['index']
-        tweet_text = row['tweet_text'] or ""
-        labels_list = ast.literal_eval(row['labels_str'])
+        image_id = str(row[self.id_column_name])
+        tweet_text = str(row['tweet_text']) if pd.notna(row['tweet_text']) and row['tweet_text'] else ""
 
-        # build prompt string
-        prompt = (
+        try:
+            labels_list_str = str(row['labels_str'])
+            if not labels_list_str.strip() or pd.isna(row['labels_str']):
+                labels_list = []
+            else:
+                labels_list = ast.literal_eval(labels_list_str)
+            if not isinstance(labels_list, list) or not all(isinstance(lbl, str) for lbl in labels_list):
+                labels_list = []
+        except (ValueError, SyntaxError, TypeError):
+            labels_list = []
+            # print(f"Warning: Could not parse labels_str for {image_id}, using empty list.") # Less verbose
+        
+        # --- Construct User Prompt Content (Text Part) ---
+        user_query_text = ( # This is the text that accompanies the image in the user's turn
             "Task: Classify the following meme using exactly three labels from: " +
-            ",".join(ALLOWED_LABELS) + ".\n"
+            ",".join(self.allowed_labels) + ".\n"
         )
         if tweet_text:
-            prompt += f"Tweet text: {tweet_text}\n"
-        # optional OCR text
+            user_query_text += f"Tweet text: {tweet_text}\n"
+        
         img_txt_file = os.path.join(self.image_text_path, f"{image_id}.json")
         if os.path.exists(img_txt_file):
-            with open(img_txt_file) as j:
-                ocr = json.load(j).get('img_text', "")
-            if ocr:
-                prompt += f"OCR text: {ocr}\n"
-        prompt += "###\nAssistant:"
+            try:
+                with open(img_txt_file, 'r') as j:
+                    ocr_data = json.load(j)
+                    ocr = str(ocr_data.get('img_text', ""))
+                if ocr:
+                    user_query_text += f"OCR text: {ocr}\n"
+            except Exception: # Simplified error logging for brevity
+                # print(f"Warning: Error loading OCR text for {image_id}: {e}")
+                pass
+        
+        user_query_text = user_query_text.rstrip() 
 
-        # load & prepare image + text
-        image = Image.open(os.path.join(self.image_path, f"{image_id}.jpg")).convert('RGB')
-        # apply chat template
-        # construct single-turn conversation
-        conv = [{"role":"user","content":[{"type":"image"},{"type":"text","text":prompt}]}]
-        text_prompt = self.processor.apply_chat_template(conv, add_assistant_prompt=True)
-        inputs = self.processor(text=text_prompt, images=image,
-                                return_tensors="pt", padding=True, truncation=True)
+        # --- Load Image ---
+        image_file_path = os.path.join(self.image_path, f"{image_id}.jpg")
+        try:
+            pil_image = Image.open(image_file_path).convert('RGB')
+        except Exception as e:
+            print(f"ERROR: Could not load image {image_file_path} for ID {image_id}. Error: {e}. Returning None.")
+            return None
 
-        # labels -> token ids
-        label_str = ",".join(labels_list)
-        label_ids = self.processor.tokenizer(label_str,
-                                             return_tensors="pt").input_ids.squeeze(0)
-
-        item = {
-            'input_ids':      inputs.input_ids.squeeze(0),
-            'attention_mask': inputs.attention_mask.squeeze(0),
-            'pixel_values':   inputs.pixel_values.squeeze(0),
-            'labels':         label_ids
-        }
-        return item
-
-def collate_fn(batch, proc):
-    # Filter out None items
-    batch = [b for b in batch if b is not None]
-    if not batch:
-        # Return an empty batch dictionary or raise an error
+        assistant_response_text = ",".join(labels_list)
+        
+        # Return the raw components needed by the collator
         return {
-            'input_ids': torch.empty(0, dtype=torch.long),
-            'attention_mask': torch.empty(0, dtype=torch.long),
-            'pixel_values': torch.empty(0, dtype=torch.float),
-            'labels': torch.empty(0, dtype=torch.long)
-            # Potentially 'pixel_attention_mask': torch.empty(0, dtype=torch.long)
+            "pil_image": pil_image,
+            "user_query": user_query_text, # Text part of user's turn
+            "assistant_response": assistant_response_text # Text of assistant's turn
         }
+   
+class AdaptedLLavaDataCollator:
+    def __init__(self, processor):
+        self.processor = processor
+        # Determine the image token string from the tokenizer, default to <image>
+        self.image_token = getattr(processor.tokenizer, "image_token", "<image>")
+        # Determine the full "ASSISTANT: " prefix string for prompt length calculation
+        # This requires applying chat template to an empty assistant message or knowing the template
+        try:
+            _dummy_user_turn = [{"role": "user", "content": "test"}]
+            self.assistant_prefix = processor.tokenizer.apply_chat_template(
+                _dummy_user_turn, tokenize=False, add_generation_prompt=True # Gets "USER: test\nASSISTANT:"
+            )
+            # Remove the user part to get just the assistant prefix
+            _dummy_user_rendered = processor.tokenizer.apply_chat_template(
+                _dummy_user_turn, tokenize=False, add_generation_prompt=False
+            )
+            self.assistant_prefix = self.assistant_prefix.replace(_dummy_user_rendered, "").strip()
+            if not self.assistant_prefix: # Fallback if stripping fails or template is unusual
+                self.assistant_prefix = "ASSISTANT:" # Common default
+        except Exception:
+            self.assistant_prefix = "ASSISTANT:" # Fallback
 
-    # Pad input_ids and create attention_mask for text
-    input_ids = pad_sequence(
-        [b['input_ids'] for b in batch],
-        batch_first=True,
-        padding_value=proc.tokenizer.pad_token_id
-    )
-    attention_mask = pad_sequence(
-        [b['attention_mask'] for b in batch],
-        batch_first=True,
-        padding_value=0  # Padding for attention_mask is 0
-    )
-
-    # Pad labels
-    labels = pad_sequence(
-        [b['labels'] for b in batch],
-        batch_first=True,
-        padding_value=proc.tokenizer.pad_token_id
-    )
-    labels[labels == proc.tokenizer.pad_token_id] = -100 # Mask padding tokens in labels
-
-    # --- Handle pixel_values padding ---
-    pixel_values_list = [b['pixel_values'] for b in batch]
-
-    if not pixel_values_list:
-        pixel_values = torch.empty(0, dtype=torch.float) # Or appropriate dtype
-        pixel_attention_mask = torch.empty(0, dtype=torch.long)
-    else:
-        # Determine the maximum number of patches/tokens in this batch
-        # pixel_values_list contains tensors of shape [N_i, C, H, W] where N_i can vary
-        max_num_patches = 0
-        for pv_tensor in pixel_values_list:
-            if pv_tensor.ndim < 3: # Expecting at least [C,H,W] or [N,C,H,W]
-                print(f"Warning: Unexpected pixel_values shape {pv_tensor.shape} in batch. Skipping or erroring.")
-                # Decide how to handle this, e.g. skip this item or raise error
-                continue # For now, let's assume they are mostly correct
-            max_num_patches = max(max_num_patches, pv_tensor.shape[0] if pv_tensor.ndim == 4 else 1)
-
-        if max_num_patches == 0 and batch : # If all items were skipped or had bad shapes
-             raise ValueError("Could not determine max_num_patches from pixel_values in the batch.")
+        print(f"DEBUG: Collator using assistant prefix: '{self.assistant_prefix}'")
 
 
-        # Assuming C, H, W are the same for all. Get them from the first valid tensor.
-        # Find first valid tensor to get C, H, W and dtype, device
-        first_valid_pv = None
-        for pv in pixel_values_list:
-            if pv.ndim == 4 and pv.shape[0] > 0: # [N, C, H, W]
-                first_valid_pv = pv
-                break
-            elif pv.ndim == 3 and max_num_patches == 1 : # [C, H, W] implies N=1
-                first_valid_pv = pv.unsqueeze(0) # Make it [1, C, H, W] for consistency
-                break
-        
-        if first_valid_pv is None and batch:
-            raise ValueError("No valid pixel_values tensors found in batch to determine C, H, W.")
+    def __call__(self, examples):
+        examples = [ex for ex in examples if ex is not None]
+        if not examples:
+            empty_float_dtype = torch.float16
+            if hasattr(self.processor, 'image_processor') and hasattr(self.processor.image_processor, 'config') and hasattr(self.processor.image_processor.config, 'torch_dtype'):
+                 empty_float_dtype = torch.float16 if self.processor.image_processor.config.torch_dtype == "float16" else torch.float32
+            return {"input_ids": torch.empty(0, dtype=torch.long), "attention_mask": torch.empty(0, dtype=torch.long),
+                    "pixel_values": torch.empty(0, dtype=empty_float_dtype), "labels": torch.empty(0, dtype=torch.long)}
 
-        # If first_valid_pv is still None here, it means pixel_values_list was empty or all bad
-        # (already handled by the `if not pixel_values_list` check, but being thorough)
+        raw_texts_for_model_input = []
+        images_for_processing = []
+        prompt_part_lengths = []
 
-        channels = first_valid_pv.shape[1]
-        height = first_valid_pv.shape[2]
-        width = first_valid_pv.shape[3]
-        pv_dtype = first_valid_pv.dtype
-        pv_device = first_valid_pv.device
-        
-        padded_pixel_values_tensors = []
-        pixel_attention_mask_tensors = []
-        
-        # Define padding value for pixel values (usually 0 for images/features)
-        # Check LLaVA's image processor config if a specific value is used (e.g., processor.image_processor.image_mean if normalizing and then padding)
-        # For raw pixel values or features, 0.0 is common.
-        pixel_padding_value = 0.0
-
-        for pv_tensor in pixel_values_list:
-            current_pv_processed = pv_tensor
-            if pv_tensor.ndim == 3 and max_num_patches == 1 : # Was [C,H,W], treat as [1,C,H,W]
-                current_pv_processed = pv_tensor.unsqueeze(0)
-            elif pv_tensor.ndim != 4:
-                print(f"Warning: Skipping item with pixel_values shape {pv_tensor.shape} as it's not 3D or 4D.")
-                # This item will effectively be dropped from the batch for pixel values.
-                # This is not ideal; __getitem__ should ensure consistent ndim or this collate fn
-                # needs to be more robust to truly problematic shapes.
-                # For now, let's assume this tensor should have been [max_num_patches, C,H,W]
-                # and create a fully padded one. This is a guess.
-                # A better solution is to fix __getitem__ or ensure all inputs are valid.
-                # current_pv_processed = torch.full((0, channels, height, width), pixel_padding_value, dtype=pv_dtype, device=pv_device)
-                # This tensor would then be fully padded below. This is just one strategy.
-                # A simpler one for now: if shape is bad, this sample might be problematic for pixel values.
-                # How to handle depends on how many such bad samples.
-                # For now, this loop assumes pv_tensor is [N_i, C, H, W] or [C,H,W]
-                pass # This tensor will not be added to padded_pixel_values_tensors if not processed
-
-            num_current_patches = current_pv_processed.shape[0]
-            padding_needed = max_num_patches - num_current_patches
+        for example in examples:
+            pil_image = example["pil_image"]
+            user_query = example["user_query"]
+            assistant_response = example["assistant_response"]
+            images_for_processing.append(pil_image)
             
-            if padding_needed >= 0 : # Only proceed if padding_needed is not negative (sanity check)
-                if padding_needed > 0:
-                    padding_shape = (padding_needed, channels, height, width)
-                    padding = torch.full(padding_shape, pixel_padding_value, dtype=pv_dtype, device=pv_device)
-                    final_pv = torch.cat((current_pv_processed, padding), dim=0)
-                else:
-                    final_pv = current_pv_processed
-                
-                padded_pixel_values_tensors.append(final_pv)
-                
-                # Create attention mask for these patches (1 for real, 0 for padded)
-                current_mask = torch.ones(num_current_patches, dtype=torch.long, device=pv_device)
-                padding_mask_for_patches = torch.zeros(padding_needed, dtype=torch.long, device=pv_device)
-                pixel_attention_mask_tensors.append(torch.cat((current_mask, padding_mask_for_patches), dim=0))
+            user_turn_text_with_image_placeholder = f"{self.image_token}\n{user_query}"
+            messages_for_template = [
+                {"role": "user", "content": user_turn_text_with_image_placeholder},
+                {"role": "assistant", "content": assistant_response}
+            ]
+
+            try:
+                full_conversation_text = self.processor.tokenizer.apply_chat_template(
+                    messages_for_template, tokenize=False, add_generation_prompt=False
+                )
+                raw_texts_for_model_input.append(full_conversation_text)
+
+                prompt_messages_for_len_calc = [{"role": "user", "content": user_turn_text_with_image_placeholder}]
+                prompt_prefix_text_for_len = self.processor.tokenizer.apply_chat_template(
+                    prompt_messages_for_len_calc, tokenize=False, add_generation_prompt=True
+                )
+                tokenized_prompt_prefix = self.processor.tokenizer(
+                    prompt_prefix_text_for_len, add_special_tokens=True, truncation=False
+                ).input_ids
+                prompt_part_lengths.append(len(tokenized_prompt_prefix))
+            except Exception as e:
+                print(f"Error in collator applying chat template. User query: '{user_query[:50]}...', Error: {e}")
+                raw_texts_for_model_input.append(f"USER: {self.image_token}\n{user_query}\n###\n{self.assistant_prefix} {assistant_response}")
+                prompt_part_lengths.append(len(self.processor.tokenizer(f"USER: {self.image_token}\n{user_query}\n###\n{self.assistant_prefix}", add_special_tokens=True).input_ids))
+
+        batch = self.processor(
+            text=raw_texts_for_model_input,
+            images=images_for_processing,
+            return_tensors="pt",
+            padding="longest",
+            truncation=True,
+            max_length=1024
+        )
+
+        labels = batch["input_ids"].clone()
+        actual_batch_size = labels.shape[0]
+
+        for i in range(actual_batch_size):
+            if i < len(prompt_part_lengths):
+                current_prompt_len = prompt_part_lengths[i]
+                current_prompt_len = min(current_prompt_len, labels.shape[1])
+                labels[i, :current_prompt_len] = -100
             else:
-                 print(f"Warning: Negative padding_needed for a pixel_value tensor. Original shape {pv_tensor.shape}, max_patches {max_num_patches}")
+                print(f"Warning: prompt_part_length missing for item {i}. Labels for this item may be incorrect.")
 
+        if self.processor.tokenizer.pad_token_id is not None:
+            labels[labels == self.processor.tokenizer.pad_token_id] = -100
+        
+        batch["labels"] = labels
 
-        if padded_pixel_values_tensors:
-            pixel_values = torch.stack(padded_pixel_values_tensors)
-            pixel_attention_mask = torch.stack(pixel_attention_mask_tensors)
-        else: # If all items had problematic pixel_values
-            # Create empty tensors with expected dimensions if possible
-            # Note: C, H, W might not be known if all pixel_values were bad.
-            # This case should ideally be prevented by robust __getitem__ or earlier checks.
-            num_channels_fallback = 3 # Common default
-            height_fallback = proc.image_processor.size['height'] if hasattr(proc, 'image_processor') else 336
-            width_fallback = proc.image_processor.size['width'] if hasattr(proc, 'image_processor') else 336
+        # --- FIX: Remove image_sizes if present ---
+        if "image_sizes" in batch:
+            # print("DEBUG: Removing 'image_sizes' from batch as it's not expected by CLIPVisionModel via this code path.")
+            batch.pop("image_sizes")
+        # --- END FIX ---
 
-            pixel_values = torch.empty((0, max_num_patches if max_num_patches > 0 else 1, num_channels_fallback, height_fallback, width_fallback), dtype=torch.float)
-            pixel_attention_mask = torch.empty((0, max_num_patches if max_num_patches > 0 else 1), dtype=torch.long)
-
-
-    # Prepare the batch dictionary
-    batch_dict = {
-        'input_ids': input_ids,
-        'attention_mask': attention_mask,
-        'pixel_values': pixel_values,
-        'labels': labels
-    }
-
-    # Add pixel_attention_mask if it was created and LLaVA model uses it
-    # The LLaVA model's forward pass needs to accept an argument like `pixel_attention_mask` or `image_attention_mask`.
-    if 'pixel_attention_mask' in locals() and pixel_attention_mask.nelement() > 0 : # Check if it was created and is not empty
-        batch_dict['pixel_attention_mask'] = pixel_attention_mask
-
-    return batch_dict
+        return batch 
 
 def compute_metrics(eval_pred: EvalPrediction, processor: AutoProcessor): # Pass processor for tokenizer
     # logits: [batch, seq_len, vocab]; labels: [batch, seq_len]
@@ -377,9 +351,9 @@ def main(args):
     print("Tokenizer pad token ID:", proc.tokenizer.pad_token_id)
 
 
-    train_ds = MMHSDataset(image_path, image_text_path, dataset_json_path, f"{splits_path}/train_ids.txt", proc)
-    val_ds = MMHSDataset(image_path, image_text_path, dataset_json_path, f"{splits_path}/val_ids.txt", proc)
-    test_ds = MMHSDataset(image_path, image_text_path, dataset_json_path, f"{splits_path}/test_ids.txt", proc)
+    train_ds = MMHSDataset(image_path, image_text_path, dataset_json_path, f"{splits_path}/train_ids.txt")
+    val_ds = MMHSDataset(image_path, image_text_path, dataset_json_path, f"{splits_path}/val_ids.txt")
+    test_ds = MMHSDataset(image_path, image_text_path, dataset_json_path, f"{splits_path}/test_ids.txt")
     
     print("Created Model and Training Sets")
     
@@ -404,14 +378,14 @@ def main(args):
         remove_unused_columns=False
     )
 
-    collate_func = partial(collate_fn, proc=proc)
+    data_collator_instance = AdaptedLLavaDataCollator(processor=proc) # Pass the processor
     compute_metrics_with_proc = partial(compute_metrics, proc=proc)
     trainer = Trainer(
         model=model,
         args=train_args,
         train_dataset=train_ds,
         eval_dataset=val_ds,
-        data_collator=collate_func,
+        data_collator=data_collator_instance,
         tokenizer=proc.tokenizer,
         compute_metrics=compute_metrics_with_proc
     )
