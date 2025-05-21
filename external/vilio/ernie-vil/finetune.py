@@ -35,6 +35,7 @@ from utils.pandas_scripts import clean_data, double_data
 from args.finetune_args import parser
 
 import paddle.fluid as fluid
+from paddle.fluid.io import DataLoader          
 
 from sklearn.metrics import roc_auc_score
 import pandas as pd
@@ -82,15 +83,39 @@ def create_vcr_model(pyreader_name, ernie_config, task_group, is_prediction=Fals
         dtypes.append('float')
         lod_levels.append(0)
 
-    pyreader = fluid.layers.py_reader(
-        capacity=30,
-        shapes=shapes,
-        dtypes=dtypes,
-        lod_levels=lod_levels,
-        name=pyreader_name,
-        use_double_buffer=False)
+    # pyreader = fluid.layers.py_reader(
+    #     capacity=30,
+    #     shapes=shapes,
+    #     dtypes=dtypes,
+    #     lod_levels=lod_levels,
+    #     name=pyreader_name,
+    #     use_double_buffer=False)
 
-    inputs = fluid.layers.read_file(pyreader)
+    # inputs = fluid.layers.read_file(pyreader)
+    feed_list = []
+    for idx, (shape, dtype) in enumerate(zip(shapes, dtypes)):
+        if shape == []:                     # scalar tensor (task_weight, etc.)
+            shp = [1]
+        else:
+            shp = shape
+        feed_list.append(
+            fluid.data(name=f"f_{idx}", shape=shp, dtype=dtype)
+        )
+
+    # Build a DataLoader that replaces the old py_reader
+    #    (iterable=False keeps the static-graph behaviour)
+    pyreader = DataLoader.from_generator(
+        feed_list      = feed_list,
+        capacity       = 30,
+        iterable       = False,
+        use_double_buffer = False,
+        name           = pyreader_name,
+    )
+
+    # In Paddle 2.x the DataLoader itself is the list of inputs
+    inputs = feed_list
+
+
     src_ids, pos_ids, sent_ids, task_ids, input_mask, image_embeddings, \
          image_loc, image_mask, labels, q_ids, task_index, binary_labels = inputs[: 12]
 
@@ -201,7 +226,9 @@ def predict_wrapper(args,
         """
             inference for downstream tasks
         """
-        pyreader.decorate_tensor_provider(data_reader.data_generator())
+        # pyreader.decorate_tensor_provider(data_reader.data_generator())
+        pyreader.set_batch_generator(
+        data_reader.data_generator(), places=[exe.place])
         pyreader.start()
 
         cost = 0
@@ -464,7 +491,9 @@ def main(args):
         result = predict()
 
     if args.do_train:
-        train_pyreader.decorate_tensor_provider(data_reader.data_generator())
+        # train_pyreader.decorate_tensor_provider(data_reader.data_generator())
+        train_pyreader.set_batch_generator(
+            data_reader.data_generator(), places=[place])
         train_pyreader.start()
 
         # For testing purposes
