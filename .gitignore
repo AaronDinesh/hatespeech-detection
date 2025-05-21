@@ -11,3 +11,4 @@ papers
 **/build_docker_image.sh
 external/vilio/data
 **/hf_models/
+**/wandb/

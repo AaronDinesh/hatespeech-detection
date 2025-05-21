@@ -6,12 +6,13 @@ from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 from transformers import (
     AutoProcessor,
-    AutoModelForCausalLM,
+    LlavaForConditionalGeneration,
     Trainer,
     TrainingArguments,
-    EvalPrediction
+    EvalPrediction,
+    BitsAndBytesConfig
 )
-from bitsandbytes import BitsAndBytesConfig
+#from bitsandbytes import BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model
 import wandb
 import json
@@ -129,25 +130,28 @@ def main(args):
     image_text_path = args.image_text_path
     dataset_json_path = args.dataset_json_path
     env_path = args.env_file
-    model_path = args.model_path
+    model_path = os.path.expanduser(args.model_path)
     splits_path = args.splits_path
     model_save_path = args.model_save_path
     load_dotenv(env_path)
-    WANDB_API_KEY = os.getenv("WANDB_API_KEY")
+    WANDB_API_KEY = os.getenv("WANDB_KEY")
     wandb.login(key=WANDB_API_KEY)
     wandb.init(project=PROJECT, name=RUN_NAME)
 
 
     proc = AutoProcessor.from_pretrained(model_path)
-    proc.patch_size                      = proc.feature_extractor.size[0]
-    proc.num_additional_image_tokens    = proc.model_kwargs.get('num_image_tokens', 1)
-    proc.vision_feature_select_strategy = proc.model_kwargs.get('vision_feature_select_strategy', 'center')
+    #proc.patch_size                     = model.config.vision_config.patch_size
+    #proc.num_additional_image_tokens    = proc.model_kwargs.get('num_image_tokens', 1)
+    #proc.vision_feature_select_strategy = proc.model_kwargs.get('vision_feature_select_strategy', 'center')
     proc.tokenizer.padding_side   = 'left'
     proc.tokenizer.pad_token      = proc.tokenizer.eos_token
     proc.tokenizer.pad_token_id   = proc.tokenizer.eos_token_id    
 
+    
+
+
     bnb = BitsAndBytesConfig(load_in_8bit=True)
-    model = AutoModelForCausalLM.from_pretrained(
+    model = LlavaForConditionalGeneration.from_pretrained(
         model_path,
         quantization_config=bnb,
         torch_dtype=torch.float16,
@@ -158,13 +162,18 @@ def main(args):
                           target_modules=["q_proj","v_proj"],
                           bias="none", task_type="CAUSAL_LM")
     model = get_peft_model(model, lora_cfg)
+    
+    print("Vision patch size:", model.config.vision_config.patch_size)
+    print("Image size:", model.config.vision_config.image_size)
+    print("Tokenizer pad token ID:", proc.tokenizer.pad_token_id)
 
 
     train_ds = MMHSDataset(image_path, image_text_path, dataset_json_path, f"{splits_path}/train_ids.txt", proc)
     val_ds = MMHSDataset(image_path, image_text_path, dataset_json_path, f"{splits_path}/val_ids.txt", proc)
     test_ds = MMHSDataset(image_path, image_text_path, dataset_json_path, f"{splits_path}/test_ids.txt", proc)
-
-
+    
+    print("Created Model and Training Sets")
+    
     def compute_metrics(eval_pred: EvalPrediction):
         # logits: [batch, seq_len, vocab]; labels: [batch, seq_len]
         logits, labels = eval_pred.predictions, eval_pred.label_ids
