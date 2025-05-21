@@ -111,24 +111,159 @@ class MMHSDataset(Dataset):
         return item
 
 def collate_fn(batch, proc):
-    input_ids      = pad_sequence([b['input_ids'] for b in batch], batch_first=True,
-                                   padding_value=proc.tokenizer.pad_token_id)
-    attention_mask = pad_sequence([b['attention_mask'] for b in batch], batch_first=True,
-                                   padding_value=0)
-    pixel_values   = torch.stack([b['pixel_values'] for b in batch])
-    labels = pad_sequence([b['labels'] for b in batch], batch_first=True,
-                           padding_value=proc.tokenizer.pad_token_id)
-    # mask padding tokens
-    labels[labels == proc.tokenizer.pad_token_id] = -100
+    # Filter out None items
+    batch = [b for b in batch if b is not None]
+    if not batch:
+        # Return an empty batch dictionary or raise an error
+        return {
+            'input_ids': torch.empty(0, dtype=torch.long),
+            'attention_mask': torch.empty(0, dtype=torch.long),
+            'pixel_values': torch.empty(0, dtype=torch.float),
+            'labels': torch.empty(0, dtype=torch.long)
+            # Potentially 'pixel_attention_mask': torch.empty(0, dtype=torch.long)
+        }
 
-    return {
-        'input_ids':      input_ids,
+    # Pad input_ids and create attention_mask for text
+    input_ids = pad_sequence(
+        [b['input_ids'] for b in batch],
+        batch_first=True,
+        padding_value=proc.tokenizer.pad_token_id
+    )
+    attention_mask = pad_sequence(
+        [b['attention_mask'] for b in batch],
+        batch_first=True,
+        padding_value=0  # Padding for attention_mask is 0
+    )
+
+    # Pad labels
+    labels = pad_sequence(
+        [b['labels'] for b in batch],
+        batch_first=True,
+        padding_value=proc.tokenizer.pad_token_id
+    )
+    labels[labels == proc.tokenizer.pad_token_id] = -100 # Mask padding tokens in labels
+
+    # --- Handle pixel_values padding ---
+    pixel_values_list = [b['pixel_values'] for b in batch]
+
+    if not pixel_values_list:
+        pixel_values = torch.empty(0, dtype=torch.float) # Or appropriate dtype
+        pixel_attention_mask = torch.empty(0, dtype=torch.long)
+    else:
+        # Determine the maximum number of patches/tokens in this batch
+        # pixel_values_list contains tensors of shape [N_i, C, H, W] where N_i can vary
+        max_num_patches = 0
+        for pv_tensor in pixel_values_list:
+            if pv_tensor.ndim < 3: # Expecting at least [C,H,W] or [N,C,H,W]
+                print(f"Warning: Unexpected pixel_values shape {pv_tensor.shape} in batch. Skipping or erroring.")
+                # Decide how to handle this, e.g. skip this item or raise error
+                continue # For now, let's assume they are mostly correct
+            max_num_patches = max(max_num_patches, pv_tensor.shape[0] if pv_tensor.ndim == 4 else 1)
+
+        if max_num_patches == 0 and batch : # If all items were skipped or had bad shapes
+             raise ValueError("Could not determine max_num_patches from pixel_values in the batch.")
+
+
+        # Assuming C, H, W are the same for all. Get them from the first valid tensor.
+        # Find first valid tensor to get C, H, W and dtype, device
+        first_valid_pv = None
+        for pv in pixel_values_list:
+            if pv.ndim == 4 and pv.shape[0] > 0: # [N, C, H, W]
+                first_valid_pv = pv
+                break
+            elif pv.ndim == 3 and max_num_patches == 1 : # [C, H, W] implies N=1
+                first_valid_pv = pv.unsqueeze(0) # Make it [1, C, H, W] for consistency
+                break
+        
+        if first_valid_pv is None and batch:
+            raise ValueError("No valid pixel_values tensors found in batch to determine C, H, W.")
+
+        # If first_valid_pv is still None here, it means pixel_values_list was empty or all bad
+        # (already handled by the `if not pixel_values_list` check, but being thorough)
+
+        channels = first_valid_pv.shape[1]
+        height = first_valid_pv.shape[2]
+        width = first_valid_pv.shape[3]
+        pv_dtype = first_valid_pv.dtype
+        pv_device = first_valid_pv.device
+        
+        padded_pixel_values_tensors = []
+        pixel_attention_mask_tensors = []
+        
+        # Define padding value for pixel values (usually 0 for images/features)
+        # Check LLaVA's image processor config if a specific value is used (e.g., processor.image_processor.image_mean if normalizing and then padding)
+        # For raw pixel values or features, 0.0 is common.
+        pixel_padding_value = 0.0
+
+        for pv_tensor in pixel_values_list:
+            current_pv_processed = pv_tensor
+            if pv_tensor.ndim == 3 and max_num_patches == 1 : # Was [C,H,W], treat as [1,C,H,W]
+                current_pv_processed = pv_tensor.unsqueeze(0)
+            elif pv_tensor.ndim != 4:
+                print(f"Warning: Skipping item with pixel_values shape {pv_tensor.shape} as it's not 3D or 4D.")
+                # This item will effectively be dropped from the batch for pixel values.
+                # This is not ideal; __getitem__ should ensure consistent ndim or this collate fn
+                # needs to be more robust to truly problematic shapes.
+                # For now, let's assume this tensor should have been [max_num_patches, C,H,W]
+                # and create a fully padded one. This is a guess.
+                # A better solution is to fix __getitem__ or ensure all inputs are valid.
+                # current_pv_processed = torch.full((0, channels, height, width), pixel_padding_value, dtype=pv_dtype, device=pv_device)
+                # This tensor would then be fully padded below. This is just one strategy.
+                # A simpler one for now: if shape is bad, this sample might be problematic for pixel values.
+                # How to handle depends on how many such bad samples.
+                # For now, this loop assumes pv_tensor is [N_i, C, H, W] or [C,H,W]
+                pass # This tensor will not be added to padded_pixel_values_tensors if not processed
+
+            num_current_patches = current_pv_processed.shape[0]
+            padding_needed = max_num_patches - num_current_patches
+            
+            if padding_needed >= 0 : # Only proceed if padding_needed is not negative (sanity check)
+                if padding_needed > 0:
+                    padding_shape = (padding_needed, channels, height, width)
+                    padding = torch.full(padding_shape, pixel_padding_value, dtype=pv_dtype, device=pv_device)
+                    final_pv = torch.cat((current_pv_processed, padding), dim=0)
+                else:
+                    final_pv = current_pv_processed
+                
+                padded_pixel_values_tensors.append(final_pv)
+                
+                # Create attention mask for these patches (1 for real, 0 for padded)
+                current_mask = torch.ones(num_current_patches, dtype=torch.long, device=pv_device)
+                padding_mask_for_patches = torch.zeros(padding_needed, dtype=torch.long, device=pv_device)
+                pixel_attention_mask_tensors.append(torch.cat((current_mask, padding_mask_for_patches), dim=0))
+            else:
+                 print(f"Warning: Negative padding_needed for a pixel_value tensor. Original shape {pv_tensor.shape}, max_patches {max_num_patches}")
+
+
+        if padded_pixel_values_tensors:
+            pixel_values = torch.stack(padded_pixel_values_tensors)
+            pixel_attention_mask = torch.stack(pixel_attention_mask_tensors)
+        else: # If all items had problematic pixel_values
+            # Create empty tensors with expected dimensions if possible
+            # Note: C, H, W might not be known if all pixel_values were bad.
+            # This case should ideally be prevented by robust __getitem__ or earlier checks.
+            num_channels_fallback = 3 # Common default
+            height_fallback = proc.image_processor.size['height'] if hasattr(proc, 'image_processor') else 336
+            width_fallback = proc.image_processor.size['width'] if hasattr(proc, 'image_processor') else 336
+
+            pixel_values = torch.empty((0, max_num_patches if max_num_patches > 0 else 1, num_channels_fallback, height_fallback, width_fallback), dtype=torch.float)
+            pixel_attention_mask = torch.empty((0, max_num_patches if max_num_patches > 0 else 1), dtype=torch.long)
+
+
+    # Prepare the batch dictionary
+    batch_dict = {
+        'input_ids': input_ids,
         'attention_mask': attention_mask,
-        'pixel_values':   pixel_values,
-        'labels':         labels
+        'pixel_values': pixel_values,
+        'labels': labels
     }
-    
 
+    # Add pixel_attention_mask if it was created and LLaVA model uses it
+    # The LLaVA model's forward pass needs to accept an argument like `pixel_attention_mask` or `image_attention_mask`.
+    if 'pixel_attention_mask' in locals() and pixel_attention_mask.nelement() > 0 : # Check if it was created and is not empty
+        batch_dict['pixel_attention_mask'] = pixel_attention_mask
+
+    return batch_dict
 
 def compute_metrics(eval_pred: EvalPrediction, processor: AutoProcessor): # Pass processor for tokenizer
     # logits: [batch, seq_len, vocab]; labels: [batch, seq_len]
@@ -255,7 +390,7 @@ def main(args):
         per_device_train_batch_size=8,
         per_device_eval_batch_size=8,
         gradient_accumulation_steps=4,
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         eval_steps=500,
         save_steps=500,
         save_total_limit=3,
