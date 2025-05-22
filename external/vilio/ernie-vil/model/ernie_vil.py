@@ -22,7 +22,8 @@ import json
 
 import six
 import paddle.fluid as fluid
-import paddle.nn as nn              
+import paddle.nn as nn  
+import paddle            
 
 
 from model.vl_transformer_encoder import encoder, pre_process_layer
