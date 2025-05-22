@@ -18,7 +18,7 @@ Allowed_labels = typing.Literal[
 #     input_labels: pydantic.conlist(Allowed_labels, min_length=3, max_length=3)
 
 class Response_schema(pydantic.BaseModel):
-    input_labels: pydantic.conlist(Allowed_labels, min_length=3, max_length=3)
+    input_labels: pydantic.conlist(Allowed_labels, min_length=1, max_length=1)
 
 class Output_schema(pydantic.BaseModel):
     id: str
@@ -202,7 +202,8 @@ class HateNotHateMatcher():
             "Accuracy": (self.results["True-Positive"] + self.results["True-Negative"]) / self.results["Count"],
             "Recall": self.results["True-Positive"] / (self.results["True-Positive"] + self.results["False-Negative"]),
             "Precision": self.results["True-Positive"] / (self.results["True-Positive"] + self.results["False-Positive"]),
-            "F1": self.results["True-Positive"] / (self.results["True-Positive"] + 0.5*(self.results["False-Positive"] + self.results["False-Negative"]))
+            "F1": self.results["True-Positive"] / (self.results["True-Positive"] + 0.5*(self.results["False-Positive"] + self.results["False-Negative"])),
+            "Cohen's Kappa": 2*(self.results["True-Positive"] * self.results["True-Negative"] - self.results["False-Negative"] * self.results["False-Positive"]) / ((self.results["True-Positive"] + self.results["False-Positive"]) * (self.results["True-Positive"] + self.results["False-Negative"]) * (self.results["False-Negative"] + self.results["True-Negative"]))
         }
     
     def plot_confusion(self, save_dir: str):
