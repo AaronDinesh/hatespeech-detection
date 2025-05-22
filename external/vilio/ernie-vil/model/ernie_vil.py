@@ -22,6 +22,8 @@ import json
 
 import six
 import paddle.fluid as fluid
+import paddle.nn as nn              
+
 
 from model.vl_transformer_encoder import encoder, pre_process_layer
 
@@ -112,7 +114,7 @@ class ErnieVilModel(object):
 
         # Initialize all weigths by truncated normal initializer, and all biases
         # will be initialized by constant zero by default.
-        self._param_initializer = fluid.initializer.TruncatedNormal(
+        self._param_initializer = nn.initializer.TruncatedNormal(
             scale=config['initializer_range'])
 
         self._build_model(src_ids, position_ids, sentence_ids, task_ids, input_mask, \
