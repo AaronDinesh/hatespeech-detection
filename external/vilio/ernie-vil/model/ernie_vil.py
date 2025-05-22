@@ -23,6 +23,7 @@ import json
 import six
 import paddle.fluid as fluid
 import paddle.nn as nn  
+import paddle.nn.functional as F
 import paddle            
 
 
@@ -124,7 +125,7 @@ class ErnieVilModel(object):
     def _build_model(self, src_ids, position_ids, sentence_ids, task_ids, input_mask, \
             image_embeddings, image_loc, input_image_mask):
         # padding id in vocabulary must be set to 0
-        emb_out = fluid.layers.embedding(
+        emb_out = nn.embedding(
             input=src_ids,
             size=[self._voc_size, self._emb_size],
             dtype=self._emb_dtype,
@@ -132,14 +133,14 @@ class ErnieVilModel(object):
                 name=self._word_emb_name, initializer=self._param_initializer),
             is_sparse=False)
 
-        position_emb_out = fluid.layers.embedding(
+        position_emb_out = nn.embedding(
             input=position_ids,
             size=[self._max_position_seq_len, self._emb_size],
             dtype=self._emb_dtype,
             param_attr=fluid.ParamAttr(
                 name=self._pos_emb_name, initializer=self._param_initializer))
 
-        sent_emb_out = fluid.layers.embedding(
+        sent_emb_out = nn.embedding(
             sentence_ids,
             size=[self._sent_types, self._emb_size],
             dtype=self._emb_dtype,
@@ -161,14 +162,14 @@ class ErnieVilModel(object):
             x=[self_attn_mask] * self._n_head, axis=1)
         n_head_self_attn_mask.stop_gradient = True
 
-        image_embeddings = fluid.layers.fc(image_embeddings,
+        image_embeddings = paddle.fc(image_embeddings,
                                       self._v_emb_size,
                                       param_attr=fluid.ParamAttr(
                                             name="image_emb.w_0",
                                             initializer=self._param_initializer),
                                       bias_attr = "image_emb.b_0",
                                       num_flatten_dims = 2)
-        loc_emb_out = fluid.layers.fc(image_loc,
+        loc_emb_out = paddle.fc(image_loc,
                                       self._v_emb_size,
                                       param_attr=fluid.ParamAttr(
                                             name="image_loc.w_0",
@@ -240,13 +241,13 @@ class ErnieVilModel(object):
         """
         Get the first feature of each sequence for classification
         """
-        text_cls_feat = fluid.layers.slice(
+        text_cls_feat = paddle.slice(
             input=self._enc_out, axes=[1], starts=[0], ends=[1])
 
-        text_cls_feat = fluid.layers.cast(
+        text_cls_feat = paddle.cast(
             x=text_cls_feat, dtype=self._emb_dtype)
 
-        text_cls_feat = fluid.layers.fc(
+        text_cls_feat = paddle.fc(
             input=text_cls_feat,
             size=self._co_emb_size,
             act="relu",
@@ -254,13 +255,13 @@ class ErnieVilModel(object):
                 name="pooled_fc_text.w_0", initializer=self._param_initializer),
             bias_attr="pooled_fc_text.b_0")
 
-        image_cls_feat = fluid.layers.slice(
+        image_cls_feat = paddle.slice(
             input=self._enc_vl_out, axes=[1], starts=[0], ends=[1])
 
-        image_cls_feat = fluid.layers.cast(
+        image_cls_feat = paddle.cast(
                 x=image_cls_feat, dtype=self._emb_dtype)
 
-        image_cls_feat = fluid.layers.fc(
+        image_cls_feat = paddle.fc(
             input=image_cls_feat,
             size=self._co_emb_size,
             act="relu",
@@ -282,7 +283,7 @@ class ErnieVilModel(object):
             return
         if dropout_rate > 0.0:
 
-            emb_fuse = fluid.layers.dropout(emb_fuse,
+            emb_fuse = F.dropout(emb_fuse,
                        self._attention_dropout,
                        dropout_implementation="upscale_in_train")
         return emb_fuse
