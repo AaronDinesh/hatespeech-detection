@@ -151,7 +151,7 @@ class ErnieVilModel(object):
         emb_out = pre_process_layer(
             emb_out, 'nd', self._prepostprocess_dropout, name='pre_encoder')
 
-        self_attn_mask = fluid.layers.matmul(
+        self_attn_mask = paddle.matmul(
             x=input_mask, y=input_mask, transpose_y=True)
 
         self_attn_mask = fluid.layers.scale(
@@ -179,7 +179,7 @@ class ErnieVilModel(object):
         emb_vl_out = pre_process_layer(  
             emb_vl_out, 'nd', self._prepostprocess_dropout, name='vl_pre_encoder')
 
-        self_attn_image_mask = fluid.layers.matmul(
+        self_attn_image_mask = paddle.matmul(
             x=input_image_mask, y=input_image_mask, transpose_y=True)
 
         self_attn_image_mask = fluid.layers.scale(
@@ -188,7 +188,7 @@ class ErnieVilModel(object):
             x=[self_attn_image_mask] * self._v_head, axis=1)
         n_head_self_attn_image_mask.stop_gradient = True
 
-        self_attn_vl_mask = fluid.layers.matmul(
+        self_attn_vl_mask = paddle.matmul(
             x=input_image_mask, y=input_mask, transpose_y=True)
         self_attn_vl_mask = fluid.layers.scale(
             x=self_attn_vl_mask, scale=10000.0, bias=-1.0, bias_after_scale=False)
