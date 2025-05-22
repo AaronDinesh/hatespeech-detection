@@ -225,13 +225,12 @@ def pre_post_process_layer(prev_out, out, process_cmd, dropout_rate=0.,
                     attr=paddle.ParamAttr(
                         name=name + '_layer_norm_bias',
                         initializer=paddle.nn.initializer.Constant(0.0))))
-        elif cmd == "d":  # add dropout
-            if dropout_rate:
-                out = layers.dropout(
-                    out,
-                    dropout_prob=dropout_rate,
-                    dropout_implementation="upscale_in_train",
-                    is_test=False)
+        elif cmd == "d":     # dropout (Paddle 2.x)
+            out = F.dropout(
+                out,
+                p=prepostprocess_dropout,
+                training=True,               # static graph ⇒ keep=True in train
+                mode="upscale_in_train")  
     return out
 
 
