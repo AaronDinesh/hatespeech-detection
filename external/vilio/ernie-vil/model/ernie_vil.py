@@ -133,14 +133,14 @@ class ErnieVilModel(object):
                 name=self._word_emb_name, initializer=self._param_initializer),
             is_sparse=False)
 
-        position_emb_out = nn.embedding(
+        position_emb_out = paddle.static.nn.embedding(
             input=position_ids,
             size=[self._max_position_seq_len, self._emb_size],
             dtype=self._emb_dtype,
             param_attr=fluid.ParamAttr(
                 name=self._pos_emb_name, initializer=self._param_initializer))
 
-        sent_emb_out = nn.embedding(
+        sent_emb_out = paddle.static.nn.embedding(
             sentence_ids,
             size=[self._sent_types, self._emb_size],
             dtype=self._emb_dtype,
