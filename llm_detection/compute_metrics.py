@@ -7,6 +7,7 @@ import os
 import pydantic
 import typing
 import ast
+import numpy as np
 
 
 Allowed_labels = typing.Literal[
@@ -138,7 +139,8 @@ class HatefulMatcher:
             "Accuracy": (self.results["True-Positive"] + self.results["True-Negative"]) / self.results["Count"],
             "Recall": self.results["True-Positive"] / (self.results["True-Positive"] + self.results["False-Negative"]),
             "Precision": self.results["True-Positive"] / (self.results["True-Positive"] + self.results["False-Positive"]),
-            "F1": self.results["True-Positive"] / (self.results["True-Positive"] + 0.5*(self.results["False-Positive"] + self.results["False-Negative"]))
+            "F1": self.results["True-Positive"] / (self.results["True-Positive"] + 0.5*(self.results["False-Positive"] + self.results["False-Negative"])),
+            "Cohen's Kappa": 2*(self.results["True-Positive"] * self.results["True-Negative"] - self.results["False-Negative"] * self.results["False-Positive"]) / ((self.results["True-Positive"] + self.results["False-Positive"]) * (self.results["True-Positive"] + self.results["False-Negative"]) * (self.results["False-Negative"] + self.results["True-Negative"]))
         }
     
     def plot_confusion(self, save_dir: str):
@@ -205,6 +207,42 @@ class HateNotHateMatcher():
     
     def plot_confusion(self, save_dir: str):
         raise NotImplementedError
+    
+
+class HatefulScore:
+    def __init__(self):
+        self.mae = 0
+        self.mse = 0
+        self.count = 0
+        self.confusion_matrix = np.zeros((4, 4))
+        pass
+    
+    def compute_hate_score(self, labels: list[str]):
+        return sum(1 for label in labels[1] if labels_mapping[label] == 1)
+    
+    def update_metrics(self, ground_truth: tuple[str, list[str]], llm_output: tuple[str, int]):
+        assert ground_truth[0] == llm_output[0], "The ids of the ground truth and llm output must be the same"
+        self.count += 1
+        gt_hate = self.compute_hate_score(llm_output)
+        self.mae += abs(gt_hate - llm_output)
+        self.mse += (gt_hate - llm_output)**2
+        self.confusion_matrix[gt_hate][llm_output] += 1
+        
+        
+    def get_metrics(self):
+        observed_agreement = np.trace(self.confusion_matrix) / self.count
+        row_marginals = np.sum(self.confusion_matrix, axis=1)
+        col_marginals = np.sum(self.confusion_matrix, axis=0)
+        expected_agreement = np.sum((row_marginals * col_marginals)) / (self.count ** 2)
+         
+        return {
+            "MAE": self.mae / self.count,
+            "MSE": self.mse / self.count,
+            "Cohen's Kappa": (observed_agreement - expected_agreement) / (1-expected_agreement),
+            "Observed Agreement": observed_agreement,
+            "Expected Agreement": expected_agreement,
+            "Confusion Matrix": self.confusion_matrix
+        }
 
 
 def json_generator(filepath: str):
@@ -267,10 +305,12 @@ def main(parser: argparse.ArgumentParser):
     if binary_labels:
         print(hate_not_hate_matcher.get_results())
         print(hate_not_hate_matcher.get_metrics())
+        [print("{}: {}".format(k, v)) for k, v in hate_not_hate_matcher.results.items()]
         hate_not_hate_matcher.plot_confusion(plot_save_dir)
     else:
         print(hateful_matcher.get_results())
         print(hateful_matcher.get_metrics())
+        [print("{}: {}".format(k, v)) for k, v in hateful_matcher.results.items()]
         print(label_matcher.get_results())
         hateful_matcher.plot_confusion(plot_save_dir)
 
@@ -281,6 +321,7 @@ if __name__ == "__main__":
     parser.add_argument("--llm-output", type=str, required=True, help="Path to the output .jsonl.gz file")
     parser.add_argument("--train-test-split", type=str, help="Path to the train-test-split.csv file")
     parser.add_argument("--binary-labels", action='store_true', help="Whether the output has binary labels or not")
+    parser.add_argument("--hateful-score", action='store_true', help="Whether the output uses hateful score or not")
     parser.add_argument("--plot-save-dir", type=str, help="Path to save the plots")
     main(parser)
 

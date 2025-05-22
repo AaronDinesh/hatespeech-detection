@@ -135,8 +135,7 @@ def train_collate_fn(inputs, processor):
 
     def create_chat_prompt(img_text, tweet_text, ground_truth): 
         return [
-            {"role": "system", "content": "You are a helpful vision assistant used to measure the hatefulness in memes. The user will give you an image and sometimes they might give you some text that was found in the image and the tweet. You should consider the image and the text given to determine a hatefulness score from 0 to 3. You can choose from the following integers for the score 0, 1, 2, 3. Do not give a score lower than 0 or higher than 3. A score of 3 is the maximum hate score possible, while 0 means no hate. Do not be overly sensitive in your judgement. You must be accurate in your judgement."},
-            {"role": "user", "content": f"Score the hatefulness in this meme.  Image Text: {img_text}. Tweet text: {tweet_text}"},
+            {"role": "user", "content": f"You are a helpful vision assistant used to measure the hatefulness in memes. The user will give you an image and sometimes they might give you some text that was found in the image and the tweet. You should consider the image and the text given to determine a hatefulness score from 0 to 3. You can choose from the following integers for the score 0, 1, 2, 3. Do not give a score lower than 0 or higher than 3. A score of 3 is the maximum hate score possible, while 0 means no hate. Do not be overly sensitive in your judgement. You must be accurate in your judgement. Score the hatefulness in this meme.  Image Text: {img_text}. Tweet text: {tweet_text}"},
             {"role": "assistant", "content": ground_truth}
         ]
     

@@ -350,7 +350,7 @@ if __name__ == "__main__":
     CURRENT_NTFY_TOPIC = os.getenv("NTFY_TOPIC", "default_app_topic")
 
     DEFAULT_MMHS_DATA_DIR = "../data/MMHS150K"
-    DEFAULT_OUTPUT_DIR = "./processed_prompts/iteration_2/"
+    DEFAULT_OUTPUT_DIR = "./processed_prompts/iteration_3/"
 
     cli_parser = argparse.ArgumentParser(prog='llm-prompt-generator', 
                                          description='Generate prompts for LLM inference from MMHS150K dataset')
@@ -358,16 +358,15 @@ if __name__ == "__main__":
                            help='Use NTFY service for error notifications')
     cli_parser.add_argument('--topic', type=str, default=CURRENT_NTFY_TOPIC, 
                            help='NTFY topic for notifications')
-    cli_parser.add_argument('--data_dir', type=str, default=DEFAULT_MMHS_DATA_DIR, 
+    cli_parser.add_argument('--data-dir', type=str, default=DEFAULT_MMHS_DATA_DIR, 
                            help='Directory of MMHS150K dataset')
-    cli_parser.add_argument('--output_dir', type=str, default=DEFAULT_OUTPUT_DIR, 
+    cli_parser.add_argument('--output-dir', type=str, default=DEFAULT_OUTPUT_DIR, 
                            help='Directory to save processed prompts')
-    cli_parser.add_argument('--batch_size', type=int, default=50, 
+    cli_parser.add_argument('--batch-size', type=int, default=50, 
                            help='Number of items to process in each batch')
-    cli_parser.add_argument('--num_workers', type=int, default=os.cpu_count(), 
+    cli_parser.add_argument('--num-workers', type=int, default=os.cpu_count(), 
                            help='Number of worker processes')
 
-    LLM_PROMPT = "You are a language model trained to detect hate speech in memes posted to Twitter. You will be provided with the image, any text that could be found in the image (Preceded with 'Image Text:') as well as any text in the tweet body (Preceded with 'Tweet text:'). An Image will always be provided, however there may not be any image text or tweet text. In this case those fields will be empty e.g 'Image Text: . Tweet text:'. You should carefully look at everything provided to you and determine whether the meme is considered to be hate speech. If you think the meme is hate speech, respond with 'HateSpeech'. If you do not think the meme is hateful respond with 'NotHate'. Do not respond with anything other than the labels 'HateSpeech' and 'NotHate'. Do not provide any other commentary. Your only job is to determine whether the meme is hateful or not, and respond with either 'HateSpeech' or 'NotHate'. Return your answer as valid JSON."
-
+    LLM_PROMPT = "You are a language model trained to detect hate speech in memes posted to Twitter. You will be provided with the image, any text that could be found in the image (Preceded with 'Image Text:') as well as any text in the tweet body (Preceded with 'Tweet text:'). An Image will always be provided, however there may not be any image text or tweet text. In this case those fields will be empty e.g 'Image Text: . Tweet text:'. You must respond with a number from '0', '1', '2', '3'. '0' means there is no hate. '3' is the maximum hatefulness score you can give. You must only respond with integers in the range 0 to 3. Do not give a number lower than 0 or a number larger than 3."
 
     main(LLM_PROMPT, cli_parser)
