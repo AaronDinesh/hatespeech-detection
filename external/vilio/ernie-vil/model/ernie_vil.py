@@ -155,9 +155,9 @@ class ErnieVilModel(object):
         self_attn_mask = paddle.matmul(
             x=input_mask, y=input_mask, transpose_y=True)
 
-        self_attn_mask = fluid.layers.scale(
+        self_attn_mask = paddle.scale(
             x=self_attn_mask, scale=10000.0, bias=-1.0, bias_after_scale=False)
-        n_head_self_attn_mask = fluid.layers.stack(
+        n_head_self_attn_mask = paddle.stack(
             x=[self_attn_mask] * self._n_head, axis=1)
         n_head_self_attn_mask.stop_gradient = True
 
@@ -183,17 +183,17 @@ class ErnieVilModel(object):
         self_attn_image_mask = paddle.matmul(
             x=input_image_mask, y=input_image_mask, transpose_y=True)
 
-        self_attn_image_mask = fluid.layers.scale(
+        self_attn_image_mask = paddle.scale(
             x=self_attn_image_mask, scale=10000.0, bias=-1.0, bias_after_scale=False)
-        n_head_self_attn_image_mask = fluid.layers.stack(
+        n_head_self_attn_image_mask = paddle.stack(
             x=[self_attn_image_mask] * self._v_head, axis=1)
         n_head_self_attn_image_mask.stop_gradient = True
 
         self_attn_vl_mask = paddle.matmul(
             x=input_image_mask, y=input_mask, transpose_y=True)
-        self_attn_vl_mask = fluid.layers.scale(
+        self_attn_vl_mask = paddle.scale(
             x=self_attn_vl_mask, scale=10000.0, bias=-1.0, bias_after_scale=False)
-        n_head_self_attn_vl_mask = fluid.layers.stack(
+        n_head_self_attn_vl_mask = paddle.stack(
             x=[self_attn_vl_mask] * self._co_head, axis=1)
         n_head_self_attn_vl_mask.stop_gradient = True
 
