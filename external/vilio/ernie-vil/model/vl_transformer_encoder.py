@@ -22,6 +22,8 @@ from functools import partial
 
 import paddle.fluid as fluid
 import paddle.fluid.layers as layers
+import paddle.nn.functional as F       # ← NEW (modern layer_norm)
+import paddle  
 
 
 def multi_head_attention(queries,
@@ -206,16 +208,23 @@ def pre_post_process_layer(prev_out, out, process_cmd, dropout_rate=0.,
     for cmd in process_cmd:
         if cmd == "a":  # add residual connection
             out = out + prev_out if prev_out else out
-        elif cmd == "n":  # add layer normalization
-            out = layers.layer_norm(
+        elif cmd == "n":  # add layer normalization (Paddle 2.x)
+            out = F.layer_norm(
                 out,
-                begin_norm_axis=len(out.shape) - 1,
-                param_attr=fluid.ParamAttr(
-                    name=name + '_layer_norm_scale',
-                    initializer=fluid.initializer.Constant(1.)),
-                bias_attr=fluid.ParamAttr(
-                    name=name + '_layer_norm_bias',
-                    initializer=fluid.initializer.Constant(0.)))
+                normalized_shape=out.shape[-1:],
+                epsilon=1e-5,
+                weight=paddle.create_parameter(
+                    shape=[out.shape[-1]],
+                    dtype=out.dtype,
+                    attr=paddle.ParamAttr(
+                        name=name + '_layer_norm_scale',
+                        initializer=paddle.nn.initializer.Constant(1.0))),
+                bias=paddle.create_parameter(
+                    shape=[out.shape[-1]],
+                    dtype=out.dtype,
+                    attr=paddle.ParamAttr(
+                        name=name + '_layer_norm_bias',
+                        initializer=paddle.nn.initializer.Constant(0.0))))
         elif cmd == "d":  # add dropout
             if dropout_rate:
                 out = layers.dropout(
