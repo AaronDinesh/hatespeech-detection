@@ -228,7 +228,7 @@ def pre_post_process_layer(prev_out, out, process_cmd, dropout_rate=0.,
         elif cmd == "d":     # dropout (Paddle 2.x)
             out = F.dropout(
                 out,
-                p=prepostprocess_dropout,
+                p=dropout_rate,
                 training=True,               # static graph ⇒ keep=True in train
                 mode="upscale_in_train")  
     return out
