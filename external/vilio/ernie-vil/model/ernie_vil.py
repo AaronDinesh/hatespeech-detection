@@ -115,7 +115,7 @@ class ErnieVilModel(object):
         # Initialize all weigths by truncated normal initializer, and all biases
         # will be initialized by constant zero by default.
         self._param_initializer = nn.initializer.TruncatedNormal(
-            scale=config['initializer_range'])
+            std=config['initializer_range'])
 
         self._build_model(src_ids, position_ids, sentence_ids, task_ids, input_mask, \
                 image_embeddings, image_loc, input_image_mask)
