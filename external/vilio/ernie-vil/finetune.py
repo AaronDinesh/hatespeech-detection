@@ -34,7 +34,7 @@ import pandas as pd
 import paddle                        # main namespace (ops / functional)
 import paddle.nn as nn               # layers / initialisers
 import paddle.nn.functional as F     # functional API
-from paddle.static.io import DataLoader  # static replacement for py_reader
+from paddle.fluid.io import DataLoader  # static replacement for py_reader
 import paddle.fluid as fluid         # keep for Program/Executor compatibility
 
 paddle.enable_static()               # we build a static computation graph
@@ -193,7 +193,7 @@ def create_vcr_model(pyreader_name, ernie_config, task_group, is_prediction=Fals
     for v in task_vars:
         v.persistable = True
     return pyreader, task_vars
-    
+
 #MODELS = {"vcr": create_vcr_model, "vqa": create_vqa_model, "refcoco+": create_refcoco_model}
 MODELS = {"vcr": create_vcr_model, "hm": create_vcr_model}
 
