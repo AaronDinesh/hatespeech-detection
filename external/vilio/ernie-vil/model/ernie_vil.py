@@ -125,7 +125,7 @@ class ErnieVilModel(object):
     def _build_model(self, src_ids, position_ids, sentence_ids, task_ids, input_mask, \
             image_embeddings, image_loc, input_image_mask):
         # padding id in vocabulary must be set to 0
-        emb_out = nn.embedding(
+        emb_out = paddle.static.nn.embedding(
             input=src_ids,
             size=[self._voc_size, self._emb_size],
             dtype=self._emb_dtype,
