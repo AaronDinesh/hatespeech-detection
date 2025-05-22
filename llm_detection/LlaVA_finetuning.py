@@ -360,7 +360,8 @@ def main(args):
     else:
         print("PyTorch is not connected to GPU.")
 
-
+    # Determine how many GPUs we have
+    ngpus = torch.cuda.device_count()
 
     processor = AutoProcessor.from_pretrained(model_path)
     processor.tokenizer.padding_side = "right" # during training, one always uses padding on the right
@@ -408,7 +409,8 @@ def main(args):
 
     trainer = L.Trainer(
         accelerator="gpu",
-        devices=[0],
+        devices=ngpus,
+        strategy="ddp",
         max_epochs=config.get("max_epochs"),
         accumulate_grad_batches=config.get("accumulate_grad_batches"),
         check_val_every_n_epoch=config.get("check_val_every_n_epoch"),
