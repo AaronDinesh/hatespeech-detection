@@ -386,7 +386,7 @@ def main():
 if __name__ == "__main__":
 
     # Create pretrain.jsonl & traindev data
-    clean_data("./data")
+    # clean_data("./data")
 
     main()
 
