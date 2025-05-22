@@ -20,7 +20,7 @@ from sklearn.metrics import cohen_kappa_score, accuracy_score, mean_absolute_err
 import re
 from functools import partial
 
-MAX_LENGTH = 256
+MAX_LENGTH = 4096
 
 
 label_mapping = {
