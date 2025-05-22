@@ -9,124 +9,116 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" finetuning vison-language task """
+""" finetuning vision–language task (ERNIE‑ViL)
+Updated for **PaddlePaddle 2.x** static graph.  All legacy 1.x Fluid APIs that
+were removed (e.g. `py_reader`, `fluid.initializer.TruncatedNormal`) have been
+replaced with their modern equivalents.  The script still uses the static
+executor/parallel‑executor path so that the surrounding training code remains
+unchanged.
+"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import os
 import sys
 import time
 import datetime
+import json
 import argparse
 import numpy as np
-import multiprocessing
-import json
+import pandas as pd
 
+# ──────────────────────────────────────────────────────────────────────────────
+#  Paddle 2.x ‑ static‑graph setup
+# ──────────────────────────────────────────────────────────────────────────────
+import paddle                        # main namespace (ops / functional)
+import paddle.nn as nn               # layers / initialisers
+import paddle.nn.functional as F     # functional API
+from paddle.fluid.io import DataLoader  # static replacement for py_reader
+import paddle.fluid as fluid         # keep for Program/Executor compatibility
+
+paddle.enable_static()               # we build a static computation graph
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  Project‑specific imports (unchanged)
+# ──────────────────────────────────────────────────────────────────────────────
 from reader.vcr_finetuning import VCRDataJointReader
 from reader.hm_finetuning import HMDataReader
-
 from model.ernie_vil import ErnieVilModel, ErnieVilConfig
 from optim.optimization import optimization
 from utils.args import print_arguments
 from utils.init import init_checkpoint, init_pretraining_params
 from utils.pandas_scripts import clean_data, double_data
 from args.finetune_args import parser
-
-import paddle
-paddle.enable_static()
-import paddle.fluid as fluid
-from paddle.fluid.io import DataLoader          
-
 from sklearn.metrics import roc_auc_score
-import pandas as pd
 
 args = parser.parse_args()
 
-# yapf: enable.
-
-#READERS = {"vcr": VCRDataJointReader, "vqa": VQADataReader, "refcoco+": RefcocoReader, "flickr": FlickrReader}
+# ──────────────────────────────────────────────────────────────────────────────
 READERS = {"vcr": VCRDataJointReader, "hm": HMDataReader}
+MODELS  = {"vcr": "create_vcr_model", "hm": "create_vcr_model"}
 
-def format_result(res_arr, qids, pred, labels, scores):
-    """
-        trans batch results into json format
-    """
-    for i in range(len(qids)):
-        res="\t".join([str(qids[i]), str(pred[i]), str(labels[i]), " ".join(["%.5f" % s for s in scores[i]])])
-        res_arr.append(res)
-    return res_arr
+# ──────────────────────────────────────────────────────────────────────────────
+#  Helper: build placeholders + DataLoader (replacement for py_reader)
+# ──────────────────────────────────────────────────────────────────────────────
 
-
-def create_vcr_model(pyreader_name, ernie_config, task_group, is_prediction=False):
-    """
-        create model arc for vcr tasks
-    """
-    shapes = [[-1, args.max_seq_len, 1],    #src_id 
-             [-1, args.max_seq_len, 1],    #pos_id
-             [-1, args.max_seq_len, 1],    #sent_id
-             [-1, args.max_seq_len, 1],    #task_id
-             [-1, args.max_seq_len, 1],    #input_mask
-             [-1, args.max_img_len, args.feature_size],  #image_embedding
-             [-1, args.max_img_len, 5],     #image_loc
-             [-1, args.max_img_len, 1],    #image_mask
-             [-1, 1],     #labels
-             [-1, 1],     #qids
-             [],          #task_index
-             [-1, 1],     #binary_labels
-             ]
-    dtypes = ['int64', 'int64', 'int64', 'int64', 'float32', 'float32', 'float32', 'float32', 
-                       'int64', 'int64', 'int64', 'float32']
-    lod_levels = [0] * len(dtypes)
-
-    for _ in task_group:
-        shapes.append([])
-        dtypes.append('float')
-        lod_levels.append(0)
-
-    # pyreader = fluid.layers.py_reader(
-    #     capacity=30,
-    #     shapes=shapes,
-    #     dtypes=dtypes,
-    #     lod_levels=lod_levels,
-    #     name=pyreader_name,
-    #     use_double_buffer=False)
-
-    # inputs = fluid.layers.read_file(pyreader)
+def _build_dataloader(pyreader_name: str, shapes, dtypes, capacity=30):
+    """Return (feed_list, dataloader) ready for static graph."""
     feed_list = []
     for idx, (shape, dtype) in enumerate(zip(shapes, dtypes)):
-        # if shape == []:                     # scalar tensor (task_weight, etc.)
-        #     shp = [1]
-        # else:
-        #     shp = shape
-        # feed_list.append(
-        #     fluid.data(name=f"f_{idx}", shape=shp, dtype=dtype)
-        # )
         shp = [None if s == -1 else s for s in (shape or [1])]
         if dtype == "float":
             dtype = "float32"
         feed_list.append(
-            paddle.static.data(name=f"f_{idx}", shape=shp, dtype=dtype)
+            paddle.static.data(name=f"{pyreader_name}_f{idx}", shape=shp, dtype=dtype)
         )
 
-    # Build a DataLoader that replaces the old py_reader
-    #    (iterable=False keeps the static-graph behaviour)
-    pyreader = DataLoader.from_generator(
-        feed_list      = feed_list,
-        capacity       = 30,
-        iterable       = False,
+    dataloader = DataLoader.from_generator(
+        feed_list         = feed_list,
+        capacity          = capacity,
+        iterable          = False,
         use_double_buffer = False,
-        return_list       = False  
     )
+    return feed_list, dataloader
 
-    # In Paddle 2.x the DataLoader itself is the list of inputs
-    inputs = feed_list
+# ──────────────────────────────────────────────────────────────────────────────
+#  Model‑builder (HM / VCR share the same architecture here)
+# ──────────────────────────────────────────────────────────────────────────────
 
+def create_vcr_model(pyreader_name, ernie_config, task_group, is_prediction=False):
+    # ---------------- input spec ----------------
+    shapes = [
+        [-1, args.max_seq_len, 1],   # src_id
+        [-1, args.max_seq_len, 1],   # pos_id
+        [-1, args.max_seq_len, 1],   # sent_id
+        [-1, args.max_seq_len, 1],   # task_id
+        [-1, args.max_seq_len, 1],   # input_mask
+        [-1, args.max_img_len, args.feature_size],  # image_embedding
+        [-1, args.max_img_len, 5],  # image_loc
+        [-1, args.max_img_len, 1],  # image_mask
+        [-1, 1],                    # labels
+        [-1, 1],                    # qids
+        [],                         # task_index (scalar)
+        [-1, 1],                    # binary_labels
+    ]
+    dtypes = [
+        'int64','int64','int64','int64','float32',
+        'float32','float32','float32',
+        'int64','int64','int64','float32'
+    ]
+    for _ in task_group:
+        shapes.append([])
+        dtypes.append('float32')
 
-    src_ids, pos_ids, sent_ids, task_ids, input_mask, image_embeddings, \
-         image_loc, image_mask, labels, q_ids, task_index, binary_labels = inputs[: 12]
+    feed_list, pyreader = _build_dataloader(pyreader_name, shapes, dtypes)
+    inputs = feed_list  # for static graph, inputs are the placeholders
 
+    # unpack (keep the original order)
+    (src_ids, pos_ids, sent_ids, task_ids, input_mask,
+     image_embeddings, image_loc, image_mask,
+     labels, q_ids, task_index, binary_labels, *extra_task_weights) = inputs
+
+    # ---------------- backbone ----------------
     ernie_vil = ErnieVilModel(
         src_ids=src_ids,
         position_ids=pos_ids,
@@ -136,62 +128,71 @@ def create_vcr_model(pyreader_name, ernie_config, task_group, is_prediction=Fals
         image_embeddings=image_embeddings,
         image_loc=image_loc,
         input_image_mask=image_mask,
-        config=ernie_config
-        )
-
+        config=ernie_config,
+    )
     h_cls, h_img = ernie_vil.get_pooled_output()
-    task_conf = task_group[0]
-    fusion_method = task_conf["fusion_method"]
-    fusion_fea = ernie_vil.get_match_score(text=h_cls, image=h_img,         \
-                                           dropout_rate=task_conf["dropout_rate"],
-                                           mode=fusion_method)
 
+    task_conf = task_group[0]
+    fusion_fea = ernie_vil.get_match_score(
+        text=h_cls,
+        image=h_img,
+        dropout_rate=task_conf["dropout_rate"],
+        mode=task_conf["fusion_method"],
+    )
+
+    # ---------------- head & loss ----------------
     if is_prediction:
         num_choice = int(task_conf['num_choice'])
-        task_name = task_conf.get('task_prefix', 'vcr')
-        score = fluid.layers.fc(fusion_fea, 1,
-                                param_attr = fluid.ParamAttr(name = task_name + "_fc.w_0",
-                                                    initializer = fluid.initializer.TruncatedNormal(scale = 0.02)),
-                                                    bias_attr = task_name + "_fc.b_0")
-        score = fluid.layers.reshape(score, shape = [-1, num_choice])
-        _loss, _softmax = fluid.layers.softmax_with_cross_entropy(logits = score,
-                                                                  label = labels, return_softmax = True)
-        _acc = fluid.layers.accuracy(input = _softmax, label = labels)
-        pred = fluid.layers.argmax(score, axis = 1)
-        mean_loss = fluid.layers.mean(_loss)
-        task_vars = [mean_loss, _acc, pred, q_ids, labels, score] #_softmax
-        for var in task_vars:
-            var.persistable = True
-        return pyreader, task_vars
-    else:
-        start_ind = 12
-        mean_loss = fluid.layers.zeros(shape = [1], dtype = 'float32')
-        mean_acc = fluid.layers.zeros(shape = [1], dtype = 'float32')
-        for task_conf in task_group:
-            task_weight = inputs[start_ind]
-            start_ind += 1
-            num_choice = int(task_conf['num_choice'])
-            task_name = task_conf.get('task_prefix', 'vcr')
-            score = fluid.layers.fc(fusion_fea, 1,
-                                    param_attr = fluid.ParamAttr(name = task_name + "_fc.w_0",
-                                    initializer = fluid.initializer.TruncatedNormal(scale = 0.02)),
-                                    bias_attr = task_name + "_fc.b_0")
+        task_name  = task_conf.get('task_prefix', 'vcr')
 
-            _loss = fluid.layers.sigmoid_cross_entropy_with_logits(score,
-                                                                    binary_labels, name = "cross_entropy_loss")
-            tmp_score = fluid.layers.reshape(score, shape = [-1, num_choice])
-            _softmax = fluid.layers.softmax(tmp_score)
-            _acc = fluid.layers.accuracy(input = _softmax, label = labels)
-            _mean_loss = fluid.layers.mean(_loss)
-            mean_loss += _mean_loss * task_weight
-            mean_acc += _acc * task_weight
-        # Added score & labels for roc_auc
-        task_vars = [fluid.layers.reduce_mean(mean_loss), mean_acc, score, binary_labels]
-        for var in task_vars:
-            var.persistable = True
+        score = paddle.static.nn.fc(
+            x           = fusion_fea,
+            size        = 1,
+            weight_attr = paddle.ParamAttr(
+                name        = task_name + "_fc.w_0",
+                initializer = nn.initializer.TruncatedNormal(std=0.02),
+            ),
+            bias_attr   = paddle.ParamAttr(name = task_name + "_fc.b_0"),
+        )
+        score = paddle.reshape(score, shape=[-1, num_choice])
+        loss, softmax = F.softmax_with_cross_entropy(score, labels, return_softmax=True)
+        acc  = paddle.static.accuracy(softmax, labels)
+        pred = paddle.argmax(score, axis=1)
 
+        mean_loss = paddle.mean(loss)
+        task_vars = [mean_loss, acc, pred, q_ids, labels, score]
+        for v in task_vars:
+            v.persistable = True
         return pyreader, task_vars
 
+    # ---------- training (possibly multi‑task weighted) ----------
+    mean_loss = paddle.zeros([1], dtype='float32')
+    mean_acc  = paddle.zeros([1], dtype='float32')
+    start_idx = 0
+    for task_conf in task_group:
+        task_weight = extra_task_weights[start_idx]
+        start_idx  += 1
+        task_name   = task_conf.get('task_prefix', 'vcr')
+
+        score = paddle.static.nn.fc(
+            x           = fusion_fea,
+            size        = 1,
+            weight_attr = paddle.ParamAttr(
+                name        = task_name + "_fc.w_0",
+                initializer = nn.initializer.TruncatedNormal(std=0.02),
+            ),
+            bias_attr   = paddle.ParamAttr(name = task_name + "_fc.b_0"),
+        )
+        loss = F.binary_cross_entropy_with_logits(score, binary_labels)
+        soft = F.softmax(paddle.reshape(score, [-1, int(task_conf['num_choice'])]), axis=-1)
+        acc  = paddle.static.accuracy(soft, labels)
+        mean_loss += paddle.mean(loss) * task_weight
+        mean_acc  += acc * task_weight
+
+    task_vars = [mean_loss, mean_acc, score, binary_labels]
+    for v in task_vars:
+        v.persistable = True
+    return pyreader, task_vars
 
 #MODELS = {"vcr": create_vcr_model, "vqa": create_vqa_model, "refcoco+": create_refcoco_model}
 MODELS = {"vcr": create_vcr_model, "hm": create_vcr_model}
