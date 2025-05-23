@@ -118,6 +118,6 @@ class MMHSDataset(Dataset):
         tweet_ids = tweet_enc["input_ids"].squeeze(0)
         img_ids   = img_enc["input_ids"].squeeze(0)
 
-        label = torch.tensor(int(row['label']), dtype=torch.long)
-
+        raw_label = int(row['label'])
+        label = torch.tensor([raw_label], dtype=torch.long)   # shape [1]
         return [image, img_ids, tweet_ids], label

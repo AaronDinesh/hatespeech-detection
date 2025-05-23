@@ -5,6 +5,8 @@ sys.path.append(o.abspath(o.join(o.dirname(sys.modules[__name__].__file__), "../
 
 from tqdm.auto import trange
 import torch
+from torch.optim.lr_scheduler import LinearLR  
+from torch.optim.lr_scheduler import SequentialLR
 from torch.utils.data import DataLoader
 from torch.nn import CrossEntropyLoss
 from multimodn.multimodn import MultiModN
@@ -18,6 +20,9 @@ from multimodn.decoders import ClassDecoder      # or MLPDecoder
 from pipelines import utils
 import torch.nn.functional as F
 import pickle as pkl
+import glob
+import re
+from pathlib import Path
     
 def main():
     PIPELINE_NAME = utils.extract_pipeline_name(sys.argv[0])
@@ -26,18 +31,26 @@ def main():
 
     torch.manual_seed(args.seed)
 
+    device = torch.device( "cuda" if torch.cuda.is_available() else "cpu")
+
     features = ['image', 'img_text', 'tweet_text']
     
     targets = ['label']
 
     # Batch size: set 0 for full batch
-    batch_size = 32
+    batch_size = 4
 
     # Representation state size
     state_size = 512
 
     learning_rate = 0.01
-    epochs = 300 if not args.epoch else args.epoch
+    epochs = 3 if not args.epoch else args.epoch
+
+    ckpt_dir          = "./checkpoint"
+    ckpt_every_iter   = 5                 # 5 iterations, not epochs
+    os.makedirs(ckpt_dir, exist_ok=True)
+
+    global_step = 0                       # will count mini-batches
 
     ##############################################################################
     ###### Create dataset and data loaders
@@ -68,10 +81,7 @@ def main():
     val_loader = DataLoader(val_dataset, batch_size_val)
     test_loader = DataLoader(test_dataset, batch_size=batch_size_test)
     print('Loaded DataLoaders')
-    for data, target in train_loader:
-        print(target.shape)   # what do you see?
-        break
-    breakpoint()
+
     ##############################################################################
     ###### Set encoder and decoders
     ##############################################################################
@@ -81,22 +91,78 @@ def main():
     
     encoders = [image_encoder, text_encoder, tweet_encoder]
     n_labels = 4            # 0,1,2,3
-    decoders = [ClassDecoder(state_size, n_labels, activation=torch.softmax)]
+    decoders = [ClassDecoder(state_size, n_labels, activation=torch.nn.Softmax(dim=1))]
 
-    model = MultiModN(state_size, encoders, decoders, 0.7, 0.3)
+    model = MultiModN(state_size, encoders, decoders, 0.7, 0.3, device = device)
     print('loaded Encoders and Decoders')
     optimizer = torch.optim.Adam(list(model.parameters()), learning_rate)
+
+    warmup_iters = 10
+    scheduler = LinearLR(
+        optimizer,
+        start_factor=0.1,          # begin at 10 % of base LR
+        end_factor=0.1,
+        total_iters=epochs - warmup_iters
+    )
+    warmup = LinearLR(
+        optimizer,
+        start_factor=0.1,          # ramps 0.1 → 1.0 over warm-up
+        end_factor=1.0,
+        total_iters=warmup_iters
+    )
+    # Use SequentialLR to chain them
+    scheduler = SequentialLR(optimizer, schedulers=[warmup, scheduler],
+                            milestones=[warmup_iters])
 
     criterion = CrossEntropyLoss()
 
     history = MultiModNHistory(targets)
 
+
+    ckpt_dir = "./checkpoint"
+    Path(ckpt_dir).mkdir(exist_ok=True)
+
+    ckpts = sorted(
+        glob.glob(f"{ckpt_dir}/step*.pt"),
+        key=lambda f: int(re.findall(r"step(\d+).pt", f)[0])
+    )
+
+    start_epoch = 0          # default: begin fresh
+    if ckpts:
+        last_ckpt = ckpts[-1]
+        payload   = torch.load(last_ckpt, map_location=device)
+
+        # restore weights / optimiser / scheduler
+        model.load_state_dict(payload["model"])
+        optimizer.load_state_dict(payload["optim"])
+        if "sched" in payload and scheduler is not None:
+            scheduler.load_state_dict(payload["sched"])
+
+        # restore the running iteration counter used by train_epoch()
+        model._global_step = payload.get("step", 0)
+
+        # optionally restore epoch if you stored it
+        start_epoch = payload.get("epoch", 0) + 1
+
+        print(f"Resumed from {last_ckpt} (step {model._global_step})")
+    else:
+        model._global_step = 0
+        print("➤  No checkpoint found – starting fresh")
+
     ##############################################################################
     ###### Train and Test model
     ##############################################################################
     for _ in trange(epochs):
-        model.train_epoch(train_loader, optimizer, criterion, history)
+        model.train_epoch(
+            train_loader,
+            optimizer,
+            criterion,
+            history,
+            checkpoint_dir="./checkpoint",
+            checkpoint_every=5,
+        )
         model.test(val_loader, criterion, history, tag='val')
+        scheduler.step()
 
     ##############################################################################
     ###### Store model and history
