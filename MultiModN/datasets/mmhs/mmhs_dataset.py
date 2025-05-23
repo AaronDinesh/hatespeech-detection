@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler
 from torch import Tensor
 import pandas as pd
 import json
+from PIL import image
 
 
 def load_img_text(row_id):
@@ -28,7 +29,7 @@ def preprocessing(data_dir):
 
     df['id'] = df['tweet_url'].str.extract(r'/status/(\d+)')
 
-    df['img'] = 'img/'+df['id']+'.jpg'
+    df['img'] = 'img_resized/'+df['id']+'.jpg'
 
     # Folder containing the JSON files
     json_folder = os.path.join(data_dir,'img_txt')
@@ -81,16 +82,34 @@ def data_splitting(MM_df, data_dir):
 
 
 class MMHSDataset(Dataset):
-    def __init__(self, dataframe):
-        self.df = dataframe
+    def __init__(self, dataframe, root_dir):
+        self.df = dataframe.reset_index(drop=True)
+        self.root_dir = root_dir  # e.g. '../../../MMHS150K/'
+        self.transform = transforms.Compose([
+            transforms.Resize((224, 224)),  # force resize to 224x224, preserving content
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                std=[0.229, 0.224, 0.225])
+        ])
 
     def __len__(self):
         return len(self.df)
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        image_path = row['img']              # maybe preprocess here
-        img_text = row['img_text']        # tokenize or embed
-        tweet_text = row['tweet_text']    # tokenize or embed
-        label = int(row['label'])         # convert to int/long
-        return (image_path, img_text, tweet_text), label
+
+        # Load image
+        image_path = os.path.join(self.root_dir, row['img'])
+        image = Image.open(image_path).convert('RGB')
+        image = self.transform(image)
+
+        # Other features
+        img_text = row['img_text'] or ""     # placeholder if missing
+        tweet_text = row['tweet_text'] or ""
+
+        img_text_tensor = torch.tensor([len(img_text)], dtype=torch.float32)
+        tweet_text_tensor = torch.tensor([len(tweet_text)], dtype=torch.float32)
+
+        label = torch.tensor(int(row['label']), dtype=torch.long)
+
+        return (image, img_text, tweet_text), label
