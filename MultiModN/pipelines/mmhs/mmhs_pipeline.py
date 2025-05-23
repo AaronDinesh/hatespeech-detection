@@ -8,11 +8,13 @@ import torch
 from torch.utils.data import DataLoader
 from torch.nn import CrossEntropyLoss
 from multimodn.multimodn import MultiModN
-from multimodn.encoders import LSTMEncoder
+# from multimodn.encoders import LSTMEncoder
 from multimodn.encoders import resnet_encoder
+from multimodn.encoders import LSTMTextEncoder
 from multimodn.decoders import LogisticDecoder
 from multimodn.history import MultiModNHistory
 from datasets.mmhs import preprocessing, data_splitting, MMHSDataset
+from multimodn.decoders import ClassDecoder      # or MLPDecoder
 from pipelines import utils
 import torch.nn.functional as F
 import pickle as pkl
@@ -26,7 +28,7 @@ def main():
 
     features = ['image', 'img_text', 'tweet_text']
     
-    targets = ['0', '1', '2', '3']
+    targets = ['label']
 
     # Batch size: set 0 for full batch
     batch_size = 32
@@ -42,9 +44,9 @@ def main():
     ##############################################################################
     path_to_mmhs = '../../../MMHS150K/'
     dataset = preprocessing(path_to_mmhs)
-
+    print('Loaded data:')
     train_data, test_data, val_data = data_splitting(dataset, path_to_mmhs)
-
+    print('Split data')
     train_dataset = MMHSDataset(train_data, root_dir=path_to_mmhs)
     val_dataset = MMHSDataset(val_data, root_dir=path_to_mmhs)
     test_dataset = MMHSDataset(test_data, root_dir=path_to_mmhs)
@@ -62,22 +64,27 @@ def main():
         batch_size_val = batch_size
         batch_size_test = batch_size
 
-    train_loader = DataLoader(train_data, batch_size_train)
-    val_loader = DataLoader(val_data, batch_size_val)
+    train_loader = DataLoader(train_dataset, batch_size_train)
+    val_loader = DataLoader(val_dataset, batch_size_val)
     test_loader = DataLoader(test_dataset, batch_size=batch_size_test)
-
+    print('Loaded DataLoaders')
+    for data, target in train_loader:
+        print(target.shape)   # what do you see?
+        break
+    breakpoint()
     ##############################################################################
     ###### Set encoder and decoders
     ##############################################################################
     image_encoder = resnet_encoder.ResNet(state_size=state_size, freeze=True)
-    text_encoder = LSTMEncoder(state_size, n_features=300, hidden_layers=(5, 5), activation=F.relu)
-    tweet_encoder = LSTMEncoder(state_size, n_features=300, hidden_layers=(5, 5), activation=F.relu)
+    text_encoder   = LSTMTextEncoder(state_size)
+    tweet_encoder = LSTMTextEncoder(state_size)
     
     encoders = [image_encoder, text_encoder, tweet_encoder]
-    decoders = [LogisticDecoder(state_size) for _ in targets]
+    n_labels = 4            # 0,1,2,3
+    decoders = [ClassDecoder(state_size, n_labels, activation=torch.softmax)]
 
     model = MultiModN(state_size, encoders, decoders, 0.7, 0.3)
-
+    print('loaded Encoders and Decoders')
     optimizer = torch.optim.Adam(list(model.parameters()), learning_rate)
 
     criterion = CrossEntropyLoss()
