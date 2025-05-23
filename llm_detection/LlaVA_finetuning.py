@@ -22,6 +22,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import cohen_kappa_score, accuracy_score, mean_absolute_error
 import re
 from functools import partial
+from lightning.pytorch.callbacks import ModelCheckpoint
 
 MAX_LENGTH = 3000
 
@@ -378,10 +379,10 @@ def main(args):
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_use_double_quant=True,
-        device_map="auto"
+        bnb_4bit_compute_dtype=torch.bfloat16
     )
 
-    model = LlavaNextForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.float16, quantization_config=bnb_config, use_flash_attention_2=True)
+    model = LlavaNextForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.float16, quantization_config=bnb_config, attn_implementation="flash_attention_2")
     
     lora_config = LoraConfig(
         r=8,
@@ -408,11 +409,10 @@ def main(args):
 
     WANDB_API_KEY = os.getenv("WANDB_KEY")
     wandb.login(key=WANDB_API_KEY)
-    wandb.init(project=PROJECT, name=RUN_NAME)
-    wandb_logger = WandbLogger(project=PROJECT)
+    wandb_logger = WandbLogger(project=PROJECT, name=RUN_NAME)
 
-    config = {"max_epochs": 10,
-            # "val_check_interval": 0.2, # how many times we want to validate during an epoch
+    config = {"max_epochs": 3,
+            "val_check_interval": 0.1, # how many times we want to validate during an epoch
             "check_val_every_n_epoch": 1,
             "gradient_clip_val": 1.0,
             "accumulate_grad_batches": 8,
@@ -432,6 +432,15 @@ def main(args):
     model_module = LlavaModelPLModule(config, processor, model, train_ds, val_ds, train_collate, eval_collate)
 
 
+    checkpoint_callback = ModelCheckpoint(
+        dirpath=args.checkpoint_save_path, # Use your checkpoint_save_path
+        filename='{epoch}-{step}',
+        save_top_k=-1,  # Save all checkpoints
+        every_n_epochs=0, # Disable epoch-based saving if using val_check_interval for finer control
+        every_n_train_steps=None # Set if you prefer step-based rather than val_check_interval
+    )
+
+
     trainer = L.Trainer(
         accelerator="gpu",
         devices=ngpus,
@@ -439,7 +448,9 @@ def main(args):
         accumulate_grad_batches=config.get("accumulate_grad_batches"),
         check_val_every_n_epoch=config.get("check_val_every_n_epoch"),
         gradient_clip_val=config.get("gradient_clip_val"),
-        precision="16-mixed",
+        val_check_interval=config.get("val_check_interval"),
+        callbacks=[checkpoint_callback],
+        precision="bf16-mixed",
         limit_val_batches=5,
         num_sanity_val_steps=0,
         logger=wandb_logger,
