@@ -12,7 +12,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from typing import Any, Dict
 import random
-
+from bitsandbytes import Adam8bit
 import lightning as L
 from lightning.pytorch.loggers import WandbLogger
 from torch.utils.data import DataLoader
@@ -315,7 +315,7 @@ class LlavaModelPLModule(L.LightningModule):
             torch.optim.Optimizer: The optimizer for training.
         """
         # you could also add a learning rate scheduler if you want
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.config.get("lr"))
+        optimizer = Adam8bit(self.parameters(), lr=self.config.get("lr"))
 
         return optimizer
 
@@ -376,6 +376,8 @@ def main(args):
     )
     model = prepare_model_for_kbit_training(model)
     model = get_peft_model(model, lora_config)
+    model.gradient_checkpointing_enable()  # reclaim activation memory
+    model.config.use_cache = False         # drop the KV cache during training
 
     train_ds = MMHS150K(image_path, image_text_path, dataset_json_path, f"{splits_path}/train_ids.txt")
     val_ds = MMHS150K(image_path, image_text_path, dataset_json_path, f"{splits_path}/val_ids.txt")

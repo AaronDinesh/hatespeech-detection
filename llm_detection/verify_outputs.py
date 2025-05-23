@@ -30,8 +30,11 @@ class labels(str, Enum):
     NotHate = 'NotHate'
     HateSpeech = 'HateSpeech'
 
+# class postDescription(pydantic.BaseModel):
+#     input_labels: list[labels]
+
 class postDescription(pydantic.BaseModel):
-    input_labels: list[labels]
+    input_labels: int
 
 
 # Allowed_labels = typing.Literal[
@@ -43,12 +46,19 @@ class postDescription(pydantic.BaseModel):
 
 ALLOWED_LENGTH = 1
 
+# Allowed_labels = typing.Literal[
+#     "NotHate", "HateSpeech"
+# ]
+
+# class Response_schema(pydantic.BaseModel):
+#     input_labels: pydantic.conlist(Allowed_labels, min_length=1, max_length=1)
+
 Allowed_labels = typing.Literal[
-    "NotHate", "HateSpeech"
+    "0", "1", "2", "3"
 ]
 
 class Response_schema(pydantic.BaseModel):
-    input_labels: pydantic.conlist(Allowed_labels, min_length=1, max_length=1)
+    input_labels: pydantic.conint(ge=0, le=3)
 
 class Output_schema(pydantic.BaseModel):
     id: str
@@ -80,6 +90,10 @@ def send_prompt(client: OpenAI, message: tuple[str, dict], model:str, response_f
             continue
         try:
             parsed = postDescription.model_validate_json(response.choices[0].message.content)
+            
+            if(parsed.input_labels < 0 or parsed.input_labels > 3):
+                raise pydantic.ValidationError
+            
             return (message[0], parsed.model_dump())
         except pydantic.ValidationError:
             print("Bad JSON response. Retrying...")
@@ -108,6 +122,9 @@ def main(args):
     response_format = postDescription.model_json_schema()
     total_length = sum(1 for _ in tqdm(json_generator(args.file_path), desc="Enumerating prompts", unit=" prompts"))
     print(f"Found {total_length} prompts.")
+
+    hateful_score = args.hateful_score
+
 
     if not args.fix_errors:
         results = {
@@ -166,40 +183,46 @@ def main(args):
 
                         #Only after we write it to the file we want to remove that id from the set. 
                         unique_ids.remove(line['id'])
-
-
                 except pydantic.ValidationError as e:
-                    #We assumming that if the model outputs less than ALLOWED_LENGTH labels, it means that it wants to duplicate the
-                    #last label. Meaning that if we have a label like ['NotHate', 'Racist'], it means that the model
-                    #also thought the last judge would say racist and therefore compressed the returned labels. In the
-                    #case of ['NotHate'] it means that all ALLOWED_LENGTH judges would have said 'NotHate'. In the case where the
-                    #model output more then ALLOWED_LENGTH labels, we just truncate to the first ALLOWED_LENGTH.
-                    
-                    ##print(f"ID {line['id']} failed because {e}\n")
-                    prev_length = len(line['response']['input_labels'])
-                    if prev_length < ALLOWED_LENGTH and prev_length != 0:
-                        if line['id'] in unique_ids:
-                            for _ in range(prev_length, ALLOWED_LENGTH):
-                                line['response']['input_labels'].append(line['response']['input_labels'][-1]) 
-                            g.write(json.dumps(line) + "\n")
+                    if hateful_score:
+                        response = int(line['response']['input_labels'])
+                        if response < 0 or response > 3:
+                            if line['id'] in unique_ids:
+                                for prompt in json_generator(args.file_path):
+                                    if prompt['id'] == line['id']:
+                                        result = send_prompt(client, (line['id'], line['response']), args.model, response_format)
+                                        g.write(json.dumps({"id": result[0], "response": result[1]}) + "\n")
+                                        unique_ids.remove(line['id'])
+                    else: 
+                        #We assumming that if the model outputs less than ALLOWED_LENGTH labels, it means that it wants to duplicate the
+                        #last label. Meaning that if we have a label like ['NotHate', 'Racist'], it means that the model
+                        #also thought the last judge would say racist and therefore compressed the returned labels. In the
+                        #case of ['NotHate'] it means that all ALLOWED_LENGTH judges would have said 'NotHate'. In the case where the
+                        #model output more then ALLOWED_LENGTH labels, we just truncate to the first ALLOWED_LENGTH.
 
-                            #Only after we write it to the file we want to remove that id from the set. 
-                            unique_ids.remove(line['id'])
-        
-                    elif prev_length == 0:
-                        if line['id'] in unique_ids:
-                            # Here we need to dispatch to the model again
-                            for prompt in json_generator(args.prompts_file):
-                                if prompt['id'] == line['id']:
-                                    result = send_prompt(client, (prompt['id'], prompt['prompt']), args.model, response_format)
-                                    g.write(json.dumps({"id": result[0], "response": result[1]}) + "\n")
-                                    unique_ids.remove(line['id'])
-                        pass
-                    else:
-                        if line['id'] in unique_ids:
-                            line['response']['input_labels'] = line['response']['input_labels'][:ALLOWED_LENGTH]
-                            g.write(json.dumps(line) + "\n")
-                            unique_ids.remove(line['id'])
+                        ##print(f"ID {line['id']} failed because {e}\n")
+                        prev_length = len(line['response']['input_labels'])
+                        if prev_length < ALLOWED_LENGTH and prev_length != 0:
+                            if line['id'] in unique_ids:
+                                for _ in range(prev_length, ALLOWED_LENGTH):
+                                    line['response']['input_labels'].append(line['response']['input_labels'][-1]) 
+                                g.write(json.dumps(line) + "\n")
+                                #Only after we write it to the file we want to remove that id from the set. 
+                                unique_ids.remove(line['id'])
+                        elif prev_length == 0:
+                            if line['id'] in unique_ids:
+                                # Here we need to dispatch to the model again
+                                for prompt in json_generator(args.prompts_file):
+                                    if prompt['id'] == line['id']:
+                                        result = send_prompt(client, (prompt['id'], prompt['prompt']), args.model, response_format)
+                                        g.write(json.dumps({"id": result[0], "response": result[1]}) + "\n")
+                                        unique_ids.remove(line['id'])
+                            pass
+                        else:
+                            if line['id'] in unique_ids:
+                                line['response']['input_labels'] = line['response']['input_labels'][:ALLOWED_LENGTH]
+                                g.write(json.dumps(line) + "\n")
+                                unique_ids.remove(line['id'])
 
 
 if __name__ == "__main__":
@@ -209,5 +232,6 @@ if __name__ == "__main__":
     argparser.add_argument("--fixed-file-path", type=str, help="Path to the fixed output .jsonl.gz file")
     argparser.add_argument("--prompts-file", type=str, help="Path to the prompts .jsonl.gz file")
     argparser.add_argument("--model", type=str, help="Model to use in case no labels are found")
+    argparser.add_argument("--hateful-score", action='store_true', help="Whether the output uses hateful score or not")
 
     main(argparser.parse_args())
