@@ -15,7 +15,7 @@ import random
 from bitsandbytes.optim import Adam8bit
 import lightning as L
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.plugins import DeepSpeedPlugin
+from lightning.pytorch.plugins import DeepSpeedStrategy
 from torch.utils.data import DataLoader
 from sklearn.metrics import cohen_kappa_score, accuracy_score, mean_absolute_error
 import re
@@ -429,7 +429,7 @@ def main(args):
         limit_val_batches=5,
         num_sanity_val_steps=0,
         logger=wandb_logger,
-        ds_plugin = DeepSpeedPlugin(stage=2,
+        ds_plugin = DeepSpeedStrategy(stage=2,
                                 offload_optimizer=True,
                                 offload_parameters=True,)
     )
