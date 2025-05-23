@@ -317,7 +317,8 @@ class LlavaModelPLModule(L.LightningModule):
             torch.optim.Optimizer: The optimizer for training.
         """
         # you could also add a learning rate scheduler if you want
-        optimizer = Adam8bit(self.model.get_peft_parameters(), lr=self.config.get("lr"))
+        trainable = filter(lambda p: p.requires_grad, self.model.parameters())
+        optimizer = Adam8bit(trainable, lr=self.config.get("lr"))
         #optimizer = DeepSpeedCPUAdam(self.parameters(), lr=self.config.get("lr"))
 
         return optimizer
