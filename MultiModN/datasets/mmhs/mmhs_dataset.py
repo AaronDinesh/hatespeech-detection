@@ -21,7 +21,6 @@ def load_img_text(row_id):
 
 
 def preprocessing(data_dir):
-
     df = pd.read_json(os.path.join(data_dir, 'MMHS150K_GT.json'),\
                       lines=False, orient='index', convert_dates=False)
 
@@ -32,7 +31,7 @@ def preprocessing(data_dir):
     df['img'] = 'img/'+df['id']+'.jpg'
 
     # Folder containing the JSON files
-    json_folder = '../MMHS150K/img_txt/'
+    json_folder = os.path.join(data_dir,'img_txt')
 
     # Function to load "img_text" from a given ID's JSON file
     def load_img_text(row_id):
@@ -57,22 +56,20 @@ def preprocessing(data_dir):
 
     df['label'] = df['labels'].apply(label_agg)
 
-    MM_df = df[['img', 'img_text', 'label']].copy()
-
-    MM_df.to_json(os.path.join('../external/vilio/data/', 'MMHS_vilio.json'), orient='records', lines=True)
-
+    MM_df = df[['img', 'img_text','tweet_text','label','id']].copy()
+    # print(MM_df[MM_df['img_text'].notna()].head())
     return MM_df
 
-def data_splitting(MM_df):
+def data_splitting(MM_df, data_dir):
 
     # Load split files
     def load_ids(filepath):
         with open(filepath, 'r') as f:
             return set(line.strip() for line in f)
 
-    train_ids = load_ids('../MMHS150K/splits/train_ids.txt')
-    test_ids = load_ids('../MMHS150K/splits/test_ids.txt')
-    val_ids = load_ids('../MMHS150K/splits/val_ids.txt')
+    train_ids = load_ids(os.path.join(data_dir, 'splits/train_ids.txt'))
+    test_ids = load_ids(os.path.join(data_dir, 'splits/test_ids.txt'))
+    val_ids = load_ids(os.path.join(data_dir, 'splits/val_ids.txt'))
 
     # Filter the DataFrame
     train_df =  MM_df[ MM_df['id'].isin(train_ids)].copy()
@@ -80,3 +77,20 @@ def data_splitting(MM_df):
     val_df =  MM_df[ MM_df['id'].isin(val_ids)].copy()
 
     return train_df, test_df, val_df
+
+
+
+class MMHSDataset(Dataset):
+    def __init__(self, dataframe):
+        self.df = dataframe
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        image_path = row['img']              # maybe preprocess here
+        img_text = row['img_text']        # tokenize or embed
+        tweet_text = row['tweet_text']    # tokenize or embed
+        label = int(row['label'])         # convert to int/long
+        return (image_path, img_text, tweet_text), label
