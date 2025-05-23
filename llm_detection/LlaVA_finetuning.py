@@ -16,6 +16,7 @@ from bitsandbytes.optim import Adam8bit
 import lightning as L
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.strategies import DeepSpeedStrategy
+from deepspeed.ops.adam import DeepSpeedCPUAdam
 from torch.utils.data import DataLoader
 from sklearn.metrics import cohen_kappa_score, accuracy_score, mean_absolute_error
 import re
@@ -316,7 +317,7 @@ class LlavaModelPLModule(L.LightningModule):
             torch.optim.Optimizer: The optimizer for training.
         """
         # you could also add a learning rate scheduler if you want
-        optimizer = Adam8bit(self.parameters(), lr=self.config.get("lr"))
+        optimizer = DeepSpeedCPUAdam(self.parameters(), lr=self.config.get("lr"))
 
         return optimizer
 
