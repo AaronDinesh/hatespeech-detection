@@ -365,7 +365,13 @@ def main(args):
 
     processor = AutoProcessor.from_pretrained(model_path)
     processor.tokenizer.padding_side = "right" # during training, one always uses padding on the right
-    bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+    #bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+    )
+
     model = LlavaNextForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.float16, quantization_config=bnb_config)
     lora_config = LoraConfig(
         r=8,
