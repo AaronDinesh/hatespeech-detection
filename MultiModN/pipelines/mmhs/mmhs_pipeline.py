@@ -8,11 +8,11 @@ import torch
 from torch.utils.data import DataLoader
 from torch.nn import CrossEntropyLoss
 from multimodn.multimodn import MultiModN
-from multimodn.encoders import MLPEncoder
+from multimodn.encoders import LSTMEncoder
 from multimodn.encoders import resnet_encoder
 from multimodn.decoders import LogisticDecoder
 from multimodn.history import MultiModNHistory
-from datasets.mmhs_dataset import preprocessing, data_splitting
+from datasets.mmhs import preprocessing, data_splitting, MMHSDataset
 from pipelines import utils
 import torch.nn.functional as F
 import pickle as pkl
@@ -24,7 +24,7 @@ def main():
 
     torch.manual_seed(args.seed)
 
-    features = ['image', 'text']
+    features = ['image', 'img_text', 'tweet_text']
     
     targets = ['0', '1', '2', '3']
 
@@ -32,7 +32,7 @@ def main():
     batch_size = 32
 
     # Representation state size
-    state_size = 1
+    state_size = 512
 
     learning_rate = 0.01
     epochs = 300 if not args.epoch else args.epoch
@@ -40,11 +40,15 @@ def main():
     ##############################################################################
     ###### Create dataset and data loaders
     ##############################################################################
-    path_to_mmhs = '../../../../MMHS150K/'
+    path_to_mmhs = '../../../MMHS150K/'
     dataset = preprocessing(path_to_mmhs)
 
-    train_data, test_data, val_data = dataset.data_splitting(dataset)
+    train_data, test_data, val_data = data_splitting(dataset, path_to_mmhs)
 
+    train_dataset = MMHSDataset(train_data, root_dir=path_to_mmhs)
+    val_dataset = MMHSDataset(val_data, root_dir=path_to_mmhs)
+    test_dataset = MMHSDataset(test_data, root_dir=path_to_mmhs)
+    # breakpoint()
     #datasplit = (0.8, 0.2, 0)
     #target_idx_to_balance = 0 # Balance 'Survived' during split
     #train_data, val_data, test_data = dataset.random_split(datasplit, args.seed, target_idx_to_balance)
@@ -60,13 +64,14 @@ def main():
 
     train_loader = DataLoader(train_data, batch_size_train)
     val_loader = DataLoader(val_data, batch_size_val)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size_test)
 
     ##############################################################################
     ###### Set encoder and decoders
     ##############################################################################
     image_encoder = resnet_encoder.ResNet(state_size=state_size, freeze=True)
-    text_encoder = MLPEncoder(state_size, input_dim=len(features), hidden_dims=(5, 5), activation=F.relu)
-    tweet_encoder = MLPEncoder(state_size, input_dim=len(features), hidden_dims=(5, 5), activation=F.relu)
+    text_encoder = LSTMEncoder(state_size, n_features=300, hidden_layers=(5, 5), activation=F.relu)
+    tweet_encoder = LSTMEncoder(state_size, n_features=300, hidden_layers=(5, 5), activation=F.relu)
     
     encoders = [image_encoder, text_encoder, tweet_encoder]
     decoders = [LogisticDecoder(state_size) for _ in targets]

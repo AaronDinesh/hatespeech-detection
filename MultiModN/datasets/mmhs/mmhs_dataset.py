@@ -7,6 +7,7 @@ from sklearn.preprocessing import StandardScaler
 from torch import Tensor
 import pandas as pd
 import json
+from PIL import image
 
 
 def load_img_text(row_id):
@@ -21,7 +22,6 @@ def load_img_text(row_id):
 
 
 def preprocessing(data_dir):
-
     df = pd.read_json(os.path.join(data_dir, 'MMHS150K_GT.json'),\
                       lines=False, orient='index', convert_dates=False)
 
@@ -29,10 +29,10 @@ def preprocessing(data_dir):
 
     df['id'] = df['tweet_url'].str.extract(r'/status/(\d+)')
 
-    df['img'] = 'img/'+df['id']+'.jpg'
+    df['img'] = 'img_resized/'+df['id']+'.jpg'
 
     # Folder containing the JSON files
-    json_folder = '../MMHS150K/img_txt/'
+    json_folder = os.path.join(data_dir,'img_txt')
 
     # Function to load "img_text" from a given ID's JSON file
     def load_img_text(row_id):
@@ -57,22 +57,20 @@ def preprocessing(data_dir):
 
     df['label'] = df['labels'].apply(label_agg)
 
-    MM_df = df[['img', 'img_text', 'label']].copy()
-
-    MM_df.to_json(os.path.join('../external/vilio/data/', 'MMHS_vilio.json'), orient='records', lines=True)
-
+    MM_df = df[['img', 'img_text','tweet_text','label','id']].copy()
+    # print(MM_df[MM_df['img_text'].notna()].head())
     return MM_df
 
-def data_splitting(MM_df):
+def data_splitting(MM_df, data_dir):
 
     # Load split files
     def load_ids(filepath):
         with open(filepath, 'r') as f:
             return set(line.strip() for line in f)
 
-    train_ids = load_ids('../MMHS150K/splits/train_ids.txt')
-    test_ids = load_ids('../MMHS150K/splits/test_ids.txt')
-    val_ids = load_ids('../MMHS150K/splits/val_ids.txt')
+    train_ids = load_ids(os.path.join(data_dir, 'splits/train_ids.txt'))
+    test_ids = load_ids(os.path.join(data_dir, 'splits/test_ids.txt'))
+    val_ids = load_ids(os.path.join(data_dir, 'splits/val_ids.txt'))
 
     # Filter the DataFrame
     train_df =  MM_df[ MM_df['id'].isin(train_ids)].copy()
@@ -80,3 +78,38 @@ def data_splitting(MM_df):
     val_df =  MM_df[ MM_df['id'].isin(val_ids)].copy()
 
     return train_df, test_df, val_df
+
+
+
+class MMHSDataset(Dataset):
+    def __init__(self, dataframe, root_dir):
+        self.df = dataframe.reset_index(drop=True)
+        self.root_dir = root_dir  # e.g. '../../../MMHS150K/'
+        self.transform = transforms.Compose([
+            transforms.Resize((224, 224)),  # force resize to 224x224, preserving content
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                std=[0.229, 0.224, 0.225])
+        ])
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+
+        # Load image
+        image_path = os.path.join(self.root_dir, row['img'])
+        image = Image.open(image_path).convert('RGB')
+        image = self.transform(image)
+
+        # Other features
+        img_text = row['img_text'] or ""     # placeholder if missing
+        tweet_text = row['tweet_text'] or ""
+
+        img_text_tensor = torch.tensor([len(img_text)], dtype=torch.float32)
+        tweet_text_tensor = torch.tensor([len(tweet_text)], dtype=torch.float32)
+
+        label = torch.tensor(int(row['label']), dtype=torch.long)
+
+        return (image, img_text, tweet_text), label

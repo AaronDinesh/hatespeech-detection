@@ -11,4 +11,7 @@ tqdm==4.64.0
 --extra-index-url https://download.pytorch.org/whl/torch_stable
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==1.13.1
-
+torchmetrics==0.11.4
+torchvision==0.14.1
+transformers==4.36.2
+tokenizers==0.14.1
