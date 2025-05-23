@@ -317,7 +317,8 @@ class LlavaModelPLModule(L.LightningModule):
             torch.optim.Optimizer: The optimizer for training.
         """
         # you could also add a learning rate scheduler if you want
-        optimizer = DeepSpeedCPUAdam(self.parameters(), lr=self.config.get("lr"))
+        optimizer = Adam8bit(self.parameters(), lr=self.config.get("lr"))
+        #optimizer = DeepSpeedCPUAdam(self.parameters(), lr=self.config.get("lr"))
 
         return optimizer
 
@@ -367,12 +368,12 @@ def main(args):
 
     processor = AutoProcessor.from_pretrained(model_path)
     processor.tokenizer.padding_side = "right" # during training, one always uses padding on the right
-    #bnb_config = BitsAndBytesConfig(load_in_8bit=True)
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_use_double_quant=True,
-    )
+    bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+    # bnb_config = BitsAndBytesConfig(
+        # load_in_4bit=True,
+        # bnb_4bit_quant_type="nf4",
+        # bnb_4bit_use_double_quant=True,
+    # )
 
     model = LlavaNextForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.float16, quantization_config=bnb_config)
     lora_config = LoraConfig(
@@ -435,10 +436,10 @@ def main(args):
         limit_val_batches=5,
         num_sanity_val_steps=0,
         logger=wandb_logger,
-        #strategy="ddp",
-        strategy = DeepSpeedStrategy(stage=2,
-                                offload_optimizer=True,
-                                offload_parameters=True,)
+        strategy="ddp",
+        #strategy = DeepSpeedStrategy(stage=2,
+        #                        offload_optimizer=True,
+        #                        offload_parameters=True,)
     )
 
     trainer.fit(model_module)
