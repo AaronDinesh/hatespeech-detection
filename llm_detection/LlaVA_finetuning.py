@@ -290,7 +290,7 @@ class LlavaModelPLModule(L.LightningModule):
         for pred, ans in zip(predictions, answers):
             pred = pred.strip()
             ans = ans.strip()
-            
+            ans = int(ans)
             matches = re.search(r'\b[0-3]\b', pred)
             number = int(matches.group()) if matches else None
             if number is not None:

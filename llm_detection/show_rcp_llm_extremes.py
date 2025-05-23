@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from tqdm import tqdm
 
+# A script to compated outputs between the ground truth and the LLM output.
+
 def json_generator(filepath: str):
     with gzip.open(filepath, 'rt', encoding='utf-8') as f:
         for line in f:
@@ -22,7 +24,7 @@ def label_agg(row):
     for x in row:
         if x != 0:
             res+= 1
-    return str(int(res))
+    return res
 
 def load_img_text(row_id, json_folder):
     file_path = os.path.join(json_folder, f"{row_id}.json")
@@ -40,7 +42,7 @@ def main(args):
     ground_truth_file = args.ground_truth
     # hateful_score = args.hateful_score # Unused
     ground_truth_label_filter = args.ground_truth_label
-    # llm_output_label_filter = args.llm_output_label # Unused in the matching logic below
+    llm_output_label_filter = args.llm_output_label
     limit = args.limit
     image_text_folder_path = args.img_text_path
     image_folder_path = args.img_path
@@ -61,7 +63,7 @@ def main(args):
         lambda row_id: os.path.join(image_folder_path, f"{row_id}.jpg") if pd.notnull(row_id) else None
     )
     
-    ground_truth_df_filtered = ground_truth_df[ground_truth_df['label'] == str(ground_truth_label_filter)]
+    ground_truth_df_filtered = ground_truth_df[ground_truth_df['label'] == ground_truth_label_filter]
 
 
     final_ids = []
@@ -81,7 +83,7 @@ def main(args):
         for llm_line_data in tqdm(json_generator(llm_output_file), desc="Processing LLM output", total=total_length, leave=False):
             # Assuming keys exist, no error checking
             if llm_line_data['id'] == tweet_id_from_gt and \
-               int(llm_line_data['response']['input_labels']) == ground_truth_label_filter:
+               int(llm_line_data['response']['input_labels']) == llm_output_label_filter:
                 
                 final_ids.append(gt_row['id'])
                 final_imgs_paths.append(gt_row['img_path'])
