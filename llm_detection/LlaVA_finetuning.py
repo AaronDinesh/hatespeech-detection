@@ -381,7 +381,7 @@ def main(args):
         device_map="auto"
     )
 
-    model = LlavaNextForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.float16, quantization_config=bnb_config, use_fast=True)
+    model = LlavaNextForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.float16, quantization_config=bnb_config, use_flash_attention_2=True)
     
     lora_config = LoraConfig(
         r=8,
