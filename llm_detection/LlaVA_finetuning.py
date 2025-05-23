@@ -17,6 +17,8 @@ import lightning as L
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.strategies import DeepSpeedStrategy
 from deepspeed.ops.adam import DeepSpeedCPUAdam
+import torch.multiprocessing as mp
+mp.set_sharing_strategy('file_system')
 from torch.utils.data import DataLoader
 from sklearn.metrics import cohen_kappa_score, accuracy_score, mean_absolute_error
 import re
@@ -331,7 +333,7 @@ class LlavaModelPLModule(L.LightningModule):
         """
 
 
-        return DataLoader(self.training_dataset, collate_fn=self.train_collate_fn, batch_size=self.batch_size, shuffle=True, num_workers=4)
+        return DataLoader(self.training_dataset, collate_fn=self.train_collate_fn, batch_size=self.batch_size, shuffle=True, num_workers=2, pin_memory=True)
     
     def val_dataloader(self):
         """
@@ -340,7 +342,7 @@ class LlavaModelPLModule(L.LightningModule):
         Returns:
             DataLoader: The DataLoader for the validation dataset.
         """
-        return DataLoader(self.validation_dataset, collate_fn=self.val_collate_fn, batch_size=self.batch_size, shuffle=False, num_workers=4)
+        return DataLoader(self.validation_dataset, collate_fn=self.val_collate_fn, batch_size=self.batch_size, shuffle=False, num_workers=2, pin_memory=True)
 
 def main(args):
     load_dotenv(args.env_file)
