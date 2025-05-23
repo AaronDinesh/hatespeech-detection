@@ -387,6 +387,13 @@ def main(args):
     model.gradient_checkpointing_enable()  # reclaim activation memory
     model.config.use_cache = False         # drop the KV cache during training
 
+
+    # after you’ve loaded your model (with 4-bit quant, LoRA, etc.)
+    total_params = sum(p.numel() for p in model.parameters())
+    bits_per_param = 4  # or 8 if you reverted to 8-bit quant, 16 for fp16, etc.
+    bytes_for_weights = total_params * bits_per_param / 8
+    print(f"≈{bytes_for_weights/1024**3:.2f} GB for raw weights")
+
     train_ds = MMHS150K(image_path, image_text_path, dataset_json_path, f"{splits_path}/train_ids.txt")
     val_ds = MMHS150K(image_path, image_text_path, dataset_json_path, f"{splits_path}/val_ids.txt")
     test_ds = MMHS150K(image_path, image_text_path, dataset_json_path, f"{splits_path}/test_ids.txt")
