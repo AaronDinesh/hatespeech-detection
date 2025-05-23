@@ -15,6 +15,7 @@ import random
 from bitsandbytes.optim import Adam8bit
 import lightning as L
 from lightning.pytorch.loggers import WandbLogger
+from lighting.pytorch.strategies import DDPStrategy
 import torch.multiprocessing as mp
 mp.set_sharing_strategy('file_system')
 from torch.utils.data import DataLoader
@@ -442,7 +443,7 @@ def main(args):
         limit_val_batches=5,
         num_sanity_val_steps=0,
         logger=wandb_logger,
-        strategy="ddp",
+        strategy=DDPStrategy(find_unused_parameters=True),
     )
 
     trainer.fit(model_module)
