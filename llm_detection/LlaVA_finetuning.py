@@ -9,8 +9,6 @@ import torch
 import json
 import wandb
 import numpy as np
-from torch.utils.data import Dataset
-from typing import Any, Dict
 import random
 from bitsandbytes.optim import Adam8bit
 import lightning as L
@@ -19,10 +17,10 @@ from lightning.pytorch.strategies import DDPStrategy
 import torch.multiprocessing as mp
 mp.set_sharing_strategy('file_system')
 from torch.utils.data import DataLoader
-from sklearn.metrics import cohen_kappa_score, accuracy_score, mean_absolute_error
 import re
 from functools import partial
 from lightning.pytorch.callbacks import ModelCheckpoint
+import math
 
 MAX_LENGTH = 3000
 
@@ -40,7 +38,7 @@ seed = 42
 random.seed(seed)
 np.random.seed(seed)
 torch.manual_seed(seed)
-
+L.seed_everything(seed)
 
 def find_all_linear_names(model):
     cls = torch.nn.Linear
@@ -261,7 +259,7 @@ class LlavaModelPLModule(L.LightningModule):
                           )
         loss = outputs.loss
 
-        self.log("train_loss", loss)
+        self.log("train_loss", loss, sync_dist=True)
 
         return loss
     
@@ -287,30 +285,29 @@ class LlavaModelPLModule(L.LightningModule):
         # important: we don't skip special tokens here, because we want to see them in the output
         predictions = self.processor.batch_decode(generated_ids[:, input_ids.size(1):], skip_special_tokens=True)
         
-        scores = []
-
+        accs = []
+        maes = []
         for pred, ans in zip(predictions, answers):
             pred = pred.strip()
             ans = ans.strip()
             
             matches = re.search(r'\b[0-3]\b', pred)
-            number = int(matches.group(0)) if matches else None
+            number = int(matches.group()) if matches else None
             if number is not None:
-                ans = int(ans)
-                acc = 1 if number == ans else 0
-                mae = abs(number - ans)
-                qwk = cohen_kappa_score([ans], [number], weights='quadratic', labels=[0, 1, 2, 3])
+                accs.append(1 if number == ans else 0)
+                maes.append(abs(number - ans))
             else:
-                acc = 0
-                mae = 3
-                qwk = 0
-            scores.append((acc, mae, qwk))
-            self.log(f"val_acc_{dataset_idx}", acc)
-            self.log(f"val_mae_{dataset_idx}", mae)
-            self.log(f"val_qwk_{dataset_idx}", qwk)
+                accs.append(0)
+                maes.append(3)
+        batch_acc = sum(accs) / len(accs)
+        batch_mae = sum(maes) / len(maes)
+
+        batch_acc = sum(accs) / len(accs)
+        batch_mae = sum(maes) / len(maes)
+        self.log('val_acc', batch_acc, sync_dist=True)
+        self.log('val_mae', batch_mae, sync_dist=True)
+        return {'val_acc': batch_acc, 'val_mae': batch_mae}
             
-        return scores
-        
     def configure_optimizers(self):
         """
         Configures the optimizer for training.
@@ -432,12 +429,15 @@ def main(args):
     model_module = LlavaModelPLModule(config, processor, model, train_ds, val_ds, train_collate, eval_collate)
 
 
+    steps_per_epoch = math.ceil(len(train_ds) / config['batch_size'])
+    checkpoint_interval = max(1, int(steps_per_epoch * config['val_check_interval']))
+    
     checkpoint_callback = ModelCheckpoint(
-        dirpath=args.checkpoint_save_path, # Use your checkpoint_save_path
-        filename='{epoch}-{step}',
-        save_top_k=-1,  # Save all checkpoints
-        every_n_epochs=0, # Disable epoch-based saving if using val_check_interval for finer control
-        every_n_train_steps=None # Set if you prefer step-based rather than val_check_interval
+        dirpath=args.checkpoint_save_path,
+        filename='epoch{epoch:02d}-step{step}',
+        save_top_k=-1,
+        every_n_train_steps=checkpoint_interval,
+        save_on_train_epoch_end=False
     )
 
 
@@ -455,13 +455,14 @@ def main(args):
         num_sanity_val_steps=0,
         logger=wandb_logger,
         strategy=DDPStrategy(find_unused_parameters=True),
+        enable_checkpointing=True
     )
 
     trainer.fit(model_module)
-    trainer.save_checkpoint(f"{checkpoint_save_path}/llava-lora.ckpt")
 
     # Save PEFT model (adapters) and processor only on global rank 0
     if trainer.global_rank == 0: # or trainer.is_global_zero
+        trainer.save_checkpoint(f"{checkpoint_save_path}/llava-lora.ckpt")
         model_module.model.save_pretrained(model_save_path)
         processor.save_pretrained(model_save_path)
         print(f"Adapter and processor saved in {model_save_path} by rank {trainer.global_rank}")
