@@ -15,7 +15,7 @@ import random
 from bitsandbytes.optim import Adam8bit
 import lightning as L
 from lightning.pytorch.loggers import WandbLogger
-from lighting.pytorch.strategies import DDPStrategy
+from lightning.pytorch.strategies import DDPStrategy
 import torch.multiprocessing as mp
 mp.set_sharing_strategy('file_system')
 from torch.utils.data import DataLoader
