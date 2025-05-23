@@ -390,6 +390,11 @@ def main(args):
     model.gradient_checkpointing_enable()  # reclaim activation memory
     model.config.use_cache = False         # drop the KV cache during training
 
+    from bitsandbytes.nn.modules import Linear8bitLt
+    for module in model.modules():
+        if isinstance(module, Linear8bitLt) and hasattr(module, "state"):
+            # move the index map onto the same device as its compressed buffer
+            module.state.idx = module.state.idx.to(module.state.CB.device)
 
     # after you’ve loaded your model (with 4-bit quant, LoRA, etc.)
     total_params = sum(p.numel() for p in model.parameters())
