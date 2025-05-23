@@ -15,7 +15,7 @@ import random
 from bitsandbytes.optim import Adam8bit
 import lightning as L
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.plugins import DeepSpeedStrategy
+from lightning.pytorch.strategies import DeepSpeedStrategy
 from torch.utils.data import DataLoader
 from sklearn.metrics import cohen_kappa_score, accuracy_score, mean_absolute_error
 import re
