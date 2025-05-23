@@ -385,7 +385,7 @@ def main(args):
     model = get_peft_model(model, lora_config)
     model.gradient_checkpointing_enable()  # reclaim activation memory
     model.config.use_cache = False         # drop the KV cache during training
-    model.enable_xformers_memory_efficient_attention()
+    model.enable_attention_slicing()
 
     train_ds = MMHS150K(image_path, image_text_path, dataset_json_path, f"{splits_path}/train_ids.txt")
     val_ds = MMHS150K(image_path, image_text_path, dataset_json_path, f"{splits_path}/val_ids.txt")
