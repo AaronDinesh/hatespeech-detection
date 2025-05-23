@@ -12,7 +12,7 @@ import numpy as np
 from torch.utils.data import Dataset
 from typing import Any, Dict
 import random
-from bitsandbytes import Adam8bit
+from bitsandbytes.optim import Adam8bit
 import lightning as L
 from lightning.pytorch.loggers import WandbLogger
 from torch.utils.data import DataLoader
