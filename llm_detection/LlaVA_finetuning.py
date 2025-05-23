@@ -367,6 +367,9 @@ def main(args):
     # Determine how many GPUs we have
     ngpus = torch.cuda.device_count()
 
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        torch.distributed.barrier()
+
     processor = AutoProcessor.from_pretrained(model_path)
     processor.tokenizer.padding_side = "right" # during training, one always uses padding on the right
     #bnb_config = BitsAndBytesConfig(load_in_8bit=True, device_map="auto")
@@ -377,7 +380,7 @@ def main(args):
         device_map="auto"
     )
 
-    model = LlavaNextForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.float16, quantization_config=bnb_config)
+    model = LlavaNextForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.float16, quantization_config=bnb_config, use_fast=True)
     
     lora_config = LoraConfig(
         r=8,
@@ -445,11 +448,16 @@ def main(args):
     trainer.fit(model_module)
     trainer.save_checkpoint(f"{checkpoint_save_path}/llava-lora.ckpt")
 
-    model_module.model.save_pretrained(model_save_path)
-    processor.save_pretrained(model_save_path)
-    print(f"Adapter and processor saved in {model_save_path}")
+    # Save PEFT model (adapters) and processor only on global rank 0
+    if trainer.global_rank == 0: # or trainer.is_global_zero
+        model_module.model.save_pretrained(model_save_path)
+        processor.save_pretrained(model_save_path)
+        print(f"Adapter and processor saved in {model_save_path} by rank {trainer.global_rank}")
 
-
+    
+    # Optional: Barrier to ensure all processes wait for rank 0 to finish saving
+    if torch.distributed.is_initialized():
+        torch.distributed.barrier()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
