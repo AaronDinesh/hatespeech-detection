@@ -186,13 +186,21 @@ def main(args):
                 except pydantic.ValidationError as e:
                     if hateful_score:
                         response = int(line['response']['input_labels'])
-                        if response < 0 or response > 3:
-                            if line['id'] in unique_ids:
-                                for prompt in json_generator(args.file_path):
-                                    if prompt['id'] == line['id']:
-                                        result = send_prompt(client, (line['id'], line['response']), args.model, response_format)
-                                        g.write(json.dumps({"id": result[0], "response": result[1]}) + "\n")
-                                        unique_ids.remove(line['id'])
+                        if response < 0:
+                            response = 0
+                        elif response > 3:
+                            response = 3
+                        g.write(json.dumps({"id": line['id'], "response": {"input_labels": response}}) + "\n")
+                        unique_ids.remove(line['id'])
+                        
+                        
+                        # if response < 0 or response > 3:
+                        #     if line['id'] in unique_ids:
+                        #         for prompt in json_generator(args.file_path):
+                        #             if prompt['id'] == line['id']:
+                        #                 result = send_prompt(client, (line['id'], line['response']), args.model, response_format)
+                        #                 g.write(json.dumps({"id": result[0], "response": result[1]}) + "\n")
+                        #                 unique_ids.remove(line['id'])
                     else: 
                         #We assumming that if the model outputs less than ALLOWED_LENGTH labels, it means that it wants to duplicate the
                         #last label. Meaning that if we have a label like ['NotHate', 'Racist'], it means that the model

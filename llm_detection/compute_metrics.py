@@ -17,8 +17,14 @@ Allowed_labels = typing.Literal[
 # class Response_schema(pydantic.BaseModel):
 #     input_labels: pydantic.conlist(Allowed_labels, min_length=3, max_length=3)
 
+# class Response_schema(pydantic.BaseModel):
+#     input_labels: pydantic.conlist(Allowed_labels, min_length=1, max_length=1)
+
 class Response_schema(pydantic.BaseModel):
-    input_labels: pydantic.conlist(Allowed_labels, min_length=1, max_length=1)
+    """
+    Response Schema to use when the LLM just outputs a number indicating the hatefulness score
+    """
+    input_labels: int
 
 class Output_schema(pydantic.BaseModel):
     id: str
@@ -115,7 +121,6 @@ class HatefulMatcher:
         ground_truth_hate = self.compute_majority(ground_truth)
         llm_output_hate = self.compute_majority(llm_output)
     
-
         self.results["Count"] += 1
         # Compute the scores for analysis later
         if ground_truth_hate and llm_output_hate:
@@ -177,7 +182,6 @@ class HateNotHateMatcher():
         else:
             self.true_not_hate += 1
 
-
         self.results["Count"] += 1
         # Compute the scores for analysis later
         if ground_truth_hate and llm_output_hate:
@@ -221,13 +225,13 @@ class HatefulScore:
     def compute_hate_score(self, labels: list[str]):
         return sum(1 for label in labels[1] if labels_mapping[label] == 1)
     
-    def update_metrics(self, ground_truth: tuple[str, list[str]], llm_output: tuple[str, int]):
+    def update_scores(self, ground_truth: tuple[str, list[str]], llm_output: tuple[str, int]):
         assert ground_truth[0] == llm_output[0], "The ids of the ground truth and llm output must be the same"
         self.count += 1
-        gt_hate = self.compute_hate_score(llm_output)
-        self.mae += abs(gt_hate - llm_output)
-        self.mse += (gt_hate - llm_output)**2
-        self.confusion_matrix[gt_hate][llm_output] += 1
+        gt_hate = self.compute_hate_score(ground_truth)
+        self.mae += abs(gt_hate - llm_output[1])
+        self.mse += (gt_hate - llm_output[1])**2
+        self.confusion_matrix[gt_hate, llm_output[1]] += 1
         
         
     def get_metrics(self):
@@ -235,6 +239,7 @@ class HatefulScore:
         row_marginals = np.sum(self.confusion_matrix, axis=1)
         col_marginals = np.sum(self.confusion_matrix, axis=0)
         expected_agreement = np.sum((row_marginals * col_marginals)) / (self.count ** 2)
+        self.normalized_confusion_matrix = self.confusion_matrix / self.count
          
         return {
             "MAE": self.mae / self.count,
@@ -242,7 +247,10 @@ class HatefulScore:
             "Cohen's Kappa": (observed_agreement - expected_agreement) / (1-expected_agreement),
             "Observed Agreement": observed_agreement,
             "Expected Agreement": expected_agreement,
-            "Confusion Matrix": self.confusion_matrix
+            "Confusion Matrix": self.normalized_confusion_matrix,
+            "Relative Confusion Matrix": self.normalized_confusion_matrix / np.sum(self.normalized_confusion_matrix, axis=1, keepdims=True),
+            "Confusion Matrix Row": "Ground Truth",
+            "Confusion Matrix Col": "LLM Output"
         }
 
 
@@ -264,12 +272,19 @@ def main(parser: argparse.ArgumentParser):
     train_test_split = args.train_test_split
     binary_labels = args.binary_labels
     plot_save_dir = args.plot_save_dir
+    text_labels = args.text_labels
+    hateful_score = args.hateful_score
     
     if binary_labels: 
         hate_not_hate_matcher = HateNotHateMatcher()
-    else:
+    elif text_labels:
         hateful_matcher = HatefulMatcher()
         label_matcher = LabelMatcher()
+    elif hateful_score:
+        hateful_score = HatefulScore()
+    else:
+        print("No valid LLM output format specified. Please specify --binary-labels, --text-labels or --hateful-score")
+        return
 
     if not os.path.exists(llm_output):
         print(f"Error: {llm_output} does not exist")
@@ -298,9 +313,11 @@ def main(parser: argparse.ArgumentParser):
 
         if binary_labels:
             hate_not_hate_matcher.update_scores((parsed_llm_output.id, ground_truth_labels), (parsed_llm_output.id, parsed_llm_output.response.input_labels))
-        else:
+        elif text_labels:
             hateful_matcher.update_scores((parsed_llm_output.id, ground_truth_labels), (parsed_llm_output.id, parsed_llm_output.response.input_labels))
             label_matcher.update_scores((parsed_llm_output.id, ground_truth_labels), (parsed_llm_output.id, parsed_llm_output.response.input_labels))
+        else:
+            hateful_score.update_scores((parsed_llm_output.id, ground_truth_labels), (parsed_llm_output.id, parsed_llm_output.response.input_labels))
 
     print("Results:")
     if binary_labels:
@@ -308,13 +325,14 @@ def main(parser: argparse.ArgumentParser):
         print(hate_not_hate_matcher.get_metrics())
         [print("{}: {}".format(k, v)) for k, v in hate_not_hate_matcher.results.items()]
         hate_not_hate_matcher.plot_confusion(plot_save_dir)
-    else:
+    elif text_labels:
         print(hateful_matcher.get_results())
         print(hateful_matcher.get_metrics())
         [print("{}: {}".format(k, v)) for k, v in hateful_matcher.results.items()]
         print(label_matcher.get_results())
         hateful_matcher.plot_confusion(plot_save_dir)
-
+    else:
+        print(hateful_score.get_metrics())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -322,6 +340,7 @@ if __name__ == "__main__":
     parser.add_argument("--llm-output", type=str, required=True, help="Path to the output .jsonl.gz file")
     parser.add_argument("--train-test-split", type=str, help="Path to the train-test-split.csv file")
     parser.add_argument("--binary-labels", action='store_true', help="Whether the output has binary labels or not")
+    parser.add_argument("--text-labels", action='store_true', help="Whether the output has text labels or not")
     parser.add_argument("--hateful-score", action='store_true', help="Whether the output uses hateful score or not")
     parser.add_argument("--plot-save-dir", type=str, help="Path to save the plots")
     main(parser)
