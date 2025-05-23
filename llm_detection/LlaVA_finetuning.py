@@ -379,7 +379,7 @@ def main(args):
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_use_double_quant=True,
-        bnb_4bit_compute_dtype=torch.float16
+        bnb_4bit_compute_dtype=torch.bfloat16
     )
 
     model = LlavaNextForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.float16, quantization_config=bnb_config, attn_implementation="flash_attention_2")
@@ -411,7 +411,7 @@ def main(args):
     wandb.login(key=WANDB_API_KEY)
     wandb_logger = WandbLogger(project=PROJECT, name=RUN_NAME)
 
-    config = {"max_epochs": 4,
+    config = {"max_epochs": 3,
             "val_check_interval": 0.1, # how many times we want to validate during an epoch
             "check_val_every_n_epoch": 1,
             "gradient_clip_val": 1.0,
@@ -450,7 +450,7 @@ def main(args):
         gradient_clip_val=config.get("gradient_clip_val"),
         val_check_interval=config.get("val_check_interval"),
         callbacks=[checkpoint_callback],
-        precision="16-mixed",
+        precision="bf16-mixed",
         limit_val_batches=5,
         num_sanity_val_steps=0,
         logger=wandb_logger,
