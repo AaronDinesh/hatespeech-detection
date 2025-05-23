@@ -15,8 +15,6 @@ import random
 from bitsandbytes.optim import Adam8bit
 import lightning as L
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.strategies import DeepSpeedStrategy
-from deepspeed.ops.adam import DeepSpeedCPUAdam
 import torch.multiprocessing as mp
 mp.set_sharing_strategy('file_system')
 from torch.utils.data import DataLoader
@@ -282,7 +280,7 @@ class LlavaModelPLModule(L.LightningModule):
 
         # autoregressively generate token IDs
         generated_ids = self.model.generate(input_ids=input_ids, attention_mask=attention_mask,
-                                       pixel_values=pixel_values, image_sizes=image_sizes, max_new_tokens=MAX_LENGTH)
+                                       pixel_values=pixel_values, image_sizes=image_sizes, max_new_tokens=5)
         # turn them back into text, chopping of the prompt
         # important: we don't skip special tokens here, because we want to see them in the output
         predictions = self.processor.batch_decode(generated_ids[:, input_ids.size(1):], skip_special_tokens=True)
@@ -370,14 +368,16 @@ def main(args):
 
     processor = AutoProcessor.from_pretrained(model_path)
     processor.tokenizer.padding_side = "right" # during training, one always uses padding on the right
-    bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+    bnb_config = BitsAndBytesConfig(load_in_8bit=True, device_map="auto")
     # bnb_config = BitsAndBytesConfig(
         # load_in_4bit=True,
         # bnb_4bit_quant_type="nf4",
         # bnb_4bit_use_double_quant=True,
+        #device_map="auto"
     # )
 
     model = LlavaNextForConditionalGeneration.from_pretrained(model_path, torch_dtype=torch.float16, quantization_config=bnb_config)
+    
     lora_config = LoraConfig(
         r=8,
         lora_alpha=8,
@@ -390,11 +390,6 @@ def main(args):
     model.gradient_checkpointing_enable()  # reclaim activation memory
     model.config.use_cache = False         # drop the KV cache during training
 
-    from bitsandbytes.nn.modules import Linear8bitLt
-    for module in model.modules():
-        if isinstance(module, Linear8bitLt) and hasattr(module, "state"):
-            # move the index map onto the same device as its compressed buffer
-            module.state.idx = module.state.idx.to(module.state.CB.device)
 
     # after you’ve loaded your model (with 4-bit quant, LoRA, etc.)
     total_params = sum(p.numel() for p in model.parameters())
@@ -444,9 +439,6 @@ def main(args):
         num_sanity_val_steps=0,
         logger=wandb_logger,
         strategy="ddp",
-        #strategy = DeepSpeedStrategy(stage=2,
-        #                        offload_optimizer=True,
-        #                        offload_parameters=True,)
     )
 
     trainer.fit(model_module)
