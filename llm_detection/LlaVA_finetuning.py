@@ -419,7 +419,6 @@ def main(args):
     trainer = L.Trainer(
         accelerator="gpu",
         devices=ngpus,
-        strategy="ddp",
         max_epochs=config.get("max_epochs"),
         accumulate_grad_batches=config.get("accumulate_grad_batches"),
         check_val_every_n_epoch=config.get("check_val_every_n_epoch"),
@@ -428,7 +427,8 @@ def main(args):
         limit_val_batches=5,
         num_sanity_val_steps=0,
         logger=wandb_logger,
-        ds_plugin = DeepSpeedStrategy(stage=2,
+        #strategy="ddp",
+        strategy = DeepSpeedStrategy(stage=2,
                                 offload_optimizer=True,
                                 offload_parameters=True,)
     )
