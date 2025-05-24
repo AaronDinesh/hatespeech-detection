@@ -12,4 +12,5 @@ dependencies = [
 [tool.uv.workspace]
 members = [
     "llm_detection",
+    "app",
 ]
