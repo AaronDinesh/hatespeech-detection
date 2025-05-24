@@ -23,6 +23,7 @@ import pickle as pkl
 import glob
 import re
 from pathlib import Path
+import pandas as pd
     
 def main():
     PIPELINE_NAME = utils.extract_pipeline_name(sys.argv[0])
