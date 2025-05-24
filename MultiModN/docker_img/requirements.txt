@@ -9,9 +9,11 @@ torchsummary==1.5.1
 torchmetrics==0.11.4 
 
 
-# ❷ NLP stack
+# NLP stack
 transformers==4.36.2
 tokenizers==0.15.2
 huggingface-hub==0.20.3
+emoji==0.6.0
 
 wandb==0.17.0    
+
