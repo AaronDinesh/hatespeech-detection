@@ -5,10 +5,11 @@ import pandas as pd
 import argparse
 import json
 import gzip
+import time
 
 
 def json_generator(filepath: str):
-    with gzip.open(filepath, 'rt', encoding='utf-8') as f:
+    with open(filepath, 'rt', encoding='utf-8') as f:
         for line in f:
             try:
                 yield json.loads(line)
@@ -16,7 +17,6 @@ def json_generator(filepath: str):
                 print(f"JSON decode error: {e}")
                 raise StopIteration
             
-
 def label_agg(row):
     res = 0
     for x in row:
@@ -95,10 +95,12 @@ class AnnotationApp:
             if self.index < len(self.df):
                 self.display_current()
             else:
-                self.status.config(text="All images annotated.")
+                self.status.config(text="All images annotated. Press any key to exit.")
                 self.image_label.config(image='')
                 self.text1.config(text='')
                 self.text2.config(text='')
+                self.master.unbind("<Key>")  # Prevent further input from being processed
+                self.master.bind("<Key>", lambda e: self.master.destroy())  # Bind any key to close
         else:
             self.status.config(text="Invalid key. Please press 0, 1, 2, or 3.")
 
@@ -108,7 +110,22 @@ def main(args):
     img_path = args.img_path
     img_text_path = args.img_text_path
     output_path = args.output_path
+    limit = args.limit
     SEED = 42
+
+    completed_annotations = set()
+    
+    if os.path.exists(output_path):
+        for line in json_generator(output_path):
+            completed_annotations.add(line['id'])
+
+    if limit - len(completed_annotations) <= 0:
+        print(f"You have annotated more images than the limit specified. Please increase the limit to annotate more images.") 
+
+    if len(completed_annotations) > 0:
+        print(f"You have already annotated {len(completed_annotations)} images. You have {limit - len(completed_annotations)} images to annotate.")
+    else:
+        print(f"You have not annotated any images yet. You have {limit} images to annotate.")
 
     ground_truth_df = pd.read_json(dataset_path, lines=False, orient='index', convert_dates=False)
     ground_truth_df['label'] = ground_truth_df['labels'].apply(label_agg) # Assumes 'labels' column contains lists
@@ -122,17 +139,12 @@ def main(args):
         lambda row_id: os.path.join(img_path, f"{row_id}.jpg") if pd.notnull(row_id) else None
     )
 
-    subset_df = ground_truth_df.sample(n=100, random_state=SEED)
+    subset_df = ground_truth_df.sample(n=limit, random_state=SEED)
+    subset_df = subset_df[subset_df['id'].isin(completed_annotations) == False]
 
     root = tk.Tk()
     app = AnnotationApp(root, subset_df, output_path=output_path)
     root.mainloop()
-
-
-
-
-    
-
 
 
 if __name__ == "__main__":
@@ -141,6 +153,7 @@ if __name__ == "__main__":
     parser.add_argument("--img-path", type=str, help="Path to the images")
     parser.add_argument("--img-text-path", type=str, help="Path to the image text file")
     parser.add_argument("--output-path", type=str, help="Path to the output JSONL file")
+    parser.add_argument("--limit", type=int, default=100, help="Number of images to annotate")
     args = parser.parse_args()
     main(args)
 
