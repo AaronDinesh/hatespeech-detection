@@ -280,6 +280,124 @@ class MultiModN(nn.Module):
             return self.test(train_loader, criterion, history = None)       
 
 
+    def train_epoch_mmhs( 
+        self,
+        train_loader: DataLoader,
+        optimizer: Optimizer,
+        criterion: Union[nn.Module, Callable],
+        history: Optional[MultiModNHistory] = None,
+        log_interval: Optional[int] = None,
+        logger: Optional[Callable] = None,
+        last_epoch: Optional[bool] = False,
+        checkpoint_dir: Optional[str] = None,
+        checkpoint_every: int = 5,
+    ):
+        # If log interval is given and logger is not, use print as default logger
+        if log_interval and not logger:
+            logger = print
+        self.train()
+
+        # Prepare AMP scaler
+        scaler = torch.amp.GradScaler()
+
+        # Pre-epoch accumulators (on GPU)
+        n_stages = len(self.encoders) + 1
+        n_classes = self.decoders[0].n_classes
+        n_batches = len(train_loader)
+
+        n_samples_epoch     = torch.ones(n_stages, device=self.device)
+        err_loss_epoch      = torch.zeros(n_stages, device=self.device)
+        n_correct_epoch     = torch.zeros(n_stages, device=self.device)
+        state_change_epoch  = torch.zeros(n_stages - 1, device=self.device)
+
+        if not hasattr(self, "_global_step"):
+            self._global_step = 0
+
+        for batch_idx, batch in enumerate(train_loader):
+            data, target, encoder_sequence = (list(batch) + [None])[:3]
+            data = [d.to(self.device, non_blocking=True) for d in data]
+            target = target[:,0].to(self.device, non_blocking=True)  # single-decoder
+            batch_size = target.shape[0]
+            n_samples_epoch[0] += batch_size
+            optimizer.zero_grad()
+
+            # Zero out per-batch metrics
+            err_loss       = torch.zeros(n_stages, device=self.device)
+            state_change   = torch.zeros(n_stages - 1, device=self.device)
+
+            with torch.amp.autocast():
+                states = [self.init_state(batch_size)]
+
+                output_decoder = self.decoders[0](states[-1])
+                _, prediction = torch.max(output_decoder, dim=1)
+                err_loss[0][0] = criterion(output_decoder, target)
+                n_correct_epoch[0][0] += sum(prediction == target).float()
+                                
+                
+                for enc_idx, data_idx in self.get_encoder_iterable(encoder_sequence, shuffle_mode=self.shuffle_mode, train=True):
+                    n_samples_epoch[enc_idx + 1] += batch_size
+                    new_state = self.encoders[enc_idx](states[-1], data[data_idx])
+                    state_change[enc_idx] = torch.mean((new_state - states[-1])**2)
+                    output_decoder = self.decoders[0](new_state)
+                    _, prediction = torch.max(output_decoder, dim=1)
+                    err_loss[enc_idx + 1][0] = criterion(output_decoder, target)
+                    n_correct_epoch[enc_idx + 1][0] += sum(prediction == target).float()
+                    states.append(new_state)
+                
+            global_err_loss = torch.sum(err_loss) / (len(self.decoders) * (len(self.encoders) + 1))
+            global_state_change = torch.sum(state_change) / len(self.encoders)
+            loss = (global_err_loss * self.err_penalty + global_state_change * self.state_change_penalty) 
+            
+        
+            # 4) Backward with AMP
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+            self._global_step += 1
+
+
+            # ───────────────── checkpoint every N iterations ──────────────────
+            if checkpoint_dir and (self._global_step % checkpoint_every == 0):
+                os.makedirs(checkpoint_dir, exist_ok=True)
+                ckpt_path = os.path.join(
+                    checkpoint_dir, f"step{self._global_step:08d}.pt"
+                )
+                torch.save(
+                    {
+                        "step":  self._global_step,
+                        "model": self.state_dict(),
+                        "optim": optimizer.state_dict(),
+                    },
+                    ckpt_path,
+                )
+                if logger:
+                    logger(f"💾  saved checkpoint → {ckpt_path}")
+            # ------------------------------------------------------------------
+            
+            err_loss_epoch += err_loss.detach().numpy()
+            state_change_epoch += state_change.detach().numpy()
+
+            if log_interval and (batch_idx % log_interval == 0):
+                logger(
+                    f"Batch {batch_idx + 1}/{n_batches}\n"
+                    f"\tLoss: {loss.item():.4f}\n"
+                    f"\tErr loss: {global_err_loss.item():.4f}\n"
+                    f"\tState change: {global_state_change.item():.4f}"
+                )
+            
+            err_loss_epoch /= n_batches
+            state_change_epoch /= n_batches
+            accuracy_epoch = n_correct_epoch / n_samples_epoch
+
+
+            if history:
+                history.state_change_loss.append(state_change_epoch)
+                history.loss['train'].append(err_loss_epoch)
+                history.accuracy['train'].append(accuracy_epoch)
+            
+            if last_epoch:
+                return self.text(train_loader, criterion, history=None)
+
     def test(
             self,
             test_loader: DataLoader,
@@ -302,10 +420,10 @@ class MultiModN(nn.Module):
 
         output_decoder_epoch = [[]] * len(self.decoders)
 
-        tp_prediction = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
-        tn_prediction = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
-        fp_prediction = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
-        fn_prediction = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
+        # tp_prediction = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
+        # tn_prediction = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
+        # fp_prediction = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
+        # fn_prediction = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
 
         with torch.no_grad():
             for batch_idx, batch in enumerate(test_loader):
@@ -316,10 +434,10 @@ class MultiModN(nn.Module):
 
                 err_loss = torch.zeros((len(self.encoders) + 1, len(self.decoders)))
                 # Matrices for each batch
-                tp = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
-                tn = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
-                fp = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
-                fn = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
+                # tp = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
+                # tn = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
+                # fp = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
+                # fn = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
 
                 data_encoders = [data_encoder.to(self.device) for data_encoder in data]
                 
@@ -342,12 +460,12 @@ class MultiModN(nn.Module):
                     n_correct_prediction[0][dec_idx] += sum(
                         prediction == target_decoder).float()
 
-                    cm = None
-                    if decoder.n_classes == 2:
-                        confmat = ConfusionMatrix(task="binary", num_classes=2).to(self.device)
-                        cm = confmat(prediction, target_decoder)
+                    # cm = None
+                    # if decoder.n_classes == 2:
+                    #     confmat = ConfusionMatrix(task="binary", num_classes=2).to(self.device)
+                    #     cm = confmat(prediction, target_decoder)
 
-                    compute_metrics(tp, tn, fp, fn, cm, 0, dec_idx)
+                    # compute_metrics(tp, tn, fp, fn, cm, 0, dec_idx)
 
                 for data_idx, enc_idx in self.get_encoder_iterable(encoder_sequence,
                                                                    shuffle_mode=self.shuffle_mode,
@@ -372,11 +490,11 @@ class MultiModN(nn.Module):
                         n_correct_prediction[enc_idx + 1][dec_idx] += sum(
                             prediction == target_decoder)
 
-                        cm = confmat(prediction, target_decoder)
-                        tp[enc_idx + 1][dec_idx] += cm[1][1]
-                        fp[enc_idx + 1][dec_idx] += cm[0][1]
-                        fn[enc_idx + 1][dec_idx] += cm[1][0]
-                        tn[enc_idx + 1][dec_idx] += cm[0][0]
+                        # cm = confmat(prediction, target_decoder)
+                        # tp[enc_idx + 1][dec_idx] += cm[1][1]
+                        # fp[enc_idx + 1][dec_idx] += cm[0][1]
+                        # fn[enc_idx + 1][dec_idx] += cm[1][0]
+                        # tn[enc_idx + 1][dec_idx] += cm[0][0]
                         
                         # To calculate the performance metrics for the decoder taking as input the state after the last encoder
                         if enc_idx == len(self.encoders)-1 and batch_idx== 0:
@@ -387,32 +505,32 @@ class MultiModN(nn.Module):
 
                 err_loss_prediction += err_loss.detach().numpy()
 
-                tp_prediction += tp
-                fp_prediction += fp
-                fn_prediction += fn
-                tn_prediction += tn
+                # tp_prediction += tp
+                # fp_prediction += fp
+                # fn_prediction += fn
+                # tn_prediction += tn
 
         err_loss_prediction /= n_batches
         accuracy_prediction = n_correct_prediction / n_samples_prediction
 
-        sensitivity_denominator = tp_prediction + fn_prediction
-        sensitivity_prediction = torch.where(sensitivity_denominator == 0, 0,
-                                          tp_prediction / sensitivity_denominator).detach().cpu().numpy()
+        # sensitivity_denominator = tp_prediction + fn_prediction
+        # sensitivity_prediction = torch.where(sensitivity_denominator == 0, 0,
+        #                                   tp_prediction / sensitivity_denominator).detach().cpu().numpy()
 
-        specificity_denominator = tn_prediction + fp_prediction
-        specificity_prediction = torch.where(specificity_denominator == 0, 0,
-                                          tn_prediction / specificity_denominator).detach().cpu().numpy()
+        # specificity_denominator = tn_prediction + fp_prediction
+        # specificity_prediction = torch.where(specificity_denominator == 0, 0,
+        #                                   tn_prediction / specificity_denominator).detach().cpu().numpy()
 
-        balanced_accuracy_prediction = (sensitivity_prediction + specificity_prediction) / 2
+        # balanced_accuracy_prediction = (sensitivity_prediction + specificity_prediction) / 2
 
         if log_results:
             logger(
                 f"{tag.capitalize()} results\n"
                 f"\tAverage loss: {np.mean(err_loss_prediction):.4f}\n"
                 f"\tAccuracy: {np.mean(accuracy_prediction):.4f}\n"
-                f"\tSensitivity: {sensitivity_prediction:.4f}\n"
-                f"\tSpecificity: {specificity_prediction:.4f}\n"
-                f"\tBalanced accuracy: {balanced_accuracy_prediction:.4f}"
+                # f"\tSensitivity: {sensitivity_prediction:.4f}\n"
+                # f"\tSpecificity: {specificity_prediction:.4f}\n"
+                # f"\tBalanced accuracy: {balanced_accuracy_prediction:.4f}"
             )
 
         if history is not None:
@@ -424,17 +542,17 @@ class MultiModN(nn.Module):
                 history.accuracy[tag] = []
             history.accuracy[tag].append(accuracy_prediction)
 
-            if tag not in history.sensitivity:
-                history.sensitivity[tag] = []
-            history.sensitivity[tag].append(sensitivity_prediction)
+            # if tag not in history.sensitivity:
+            #     history.sensitivity[tag] = []
+            # history.sensitivity[tag].append(sensitivity_prediction)
 
-            if tag not in history.specificity:
-                history.specificity[tag] = []
-            history.specificity[tag].append(specificity_prediction)
+            # if tag not in history.specificity:
+            #     history.specificity[tag] = []
+            # history.specificity[tag].append(specificity_prediction)
 
-            if tag not in history.balanced_accuracy:
-                history.balanced_accuracy[tag] = []
-            history.balanced_accuracy[tag].append(balanced_accuracy_prediction)
+            # if tag not in history.balanced_accuracy:
+            #     history.balanced_accuracy[tag] = []
+            # history.balanced_accuracy[tag].append(balanced_accuracy_prediction)
         # Output the results for each decoder with the state vector after the last encoder as input   
         results = [[]] * len(self.decoders)          
         for dec_idx in range(len(output_decoder_epoch)):

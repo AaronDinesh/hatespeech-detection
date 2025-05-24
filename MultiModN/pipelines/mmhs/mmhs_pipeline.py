@@ -78,9 +78,9 @@ def main():
         batch_size_val = batch_size
         batch_size_test = batch_size
 
-    train_loader = DataLoader(train_dataset, batch_size_train)
-    val_loader = DataLoader(val_dataset, batch_size_val)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size_test)
+    train_loader = DataLoader(train_dataset, batch_size_train, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size_val, num_workers=4)
+    #test_loader = DataLoader(test_dataset, batch_size=batch_size_test)
     print('Loaded DataLoaders')
 
     ##############################################################################
@@ -161,6 +161,7 @@ def main():
             history,
             checkpoint_dir="./checkpoint",
             checkpoint_every=5,
+            log_interval=1
         )
         model.test(val_loader, criterion, history, tag='val')
         scheduler.step()
