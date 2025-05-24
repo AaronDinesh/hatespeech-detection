@@ -80,7 +80,7 @@ def data_splitting(MM_df, data_dir):
     test_df =  MM_df[ MM_df['id'].isin(test_ids)].copy()
     val_df =  MM_df[ MM_df['id'].isin(val_ids)].copy()
 
-    return train_df, test_df, val_df
+    return train_df, test_df, val_df.head(10)
 
 
 

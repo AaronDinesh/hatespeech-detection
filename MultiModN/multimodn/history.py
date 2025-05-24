@@ -21,15 +21,15 @@ class MultiModNHistory():
             'train': [],
         }
 
-        self.sensitivity: Dict[str, List[np.ndarray]] = {
-            'train': [],
-        }
-        self.specificity: Dict[str, List[np.ndarray]] = {
-            'train': [],
-        }
-        self.balanced_accuracy: Dict[str, List[np.ndarray]] = {
-            'train': [],
-        }
+        # self.sensitivity: Dict[str, List[np.ndarray]] = {
+        #     'train': [],
+        # }
+        # self.specificity: Dict[str, List[np.ndarray]] = {
+        #     'train': [],
+        # }
+        # self.balanced_accuracy: Dict[str, List[np.ndarray]] = {
+        #     'train': [],
+        # }
 
     def plot(
         self,
@@ -67,45 +67,45 @@ class MultiModNHistory():
                 ax[1][col_idx].set_title(f"{key.capitalize()} Accuracy")
                 ax[1][col_idx].grid(True)
 
-            # Should be similar to accuracy and loss, but I don't use this function, so I hadn't implement it yet
-            # Plot sensitivity curves
-            for col_idx, (key, value) in enumerate(self.sensitivity.items()):
-                label = f"{target_name}"
-                ax[2][col_idx].plot(list(map(lambda x: x[-1][i], value)), label=label)
-                ax[2][col_idx].legend(loc="best")
-                ax[2][col_idx].set_title(f"{key.capitalize()} Sensitivity")
-                ax[2][col_idx].grid(True)
+            # # Should be similar to accuracy and loss, but I don't use this function, so I hadn't implement it yet
+            # # Plot sensitivity curves
+            # for col_idx, (key, value) in enumerate(self.sensitivity.items()):
+            #     label = f"{target_name}"
+            #     ax[2][col_idx].plot(list(map(lambda x: x[-1][i], value)), label=label)
+            #     ax[2][col_idx].legend(loc="best")
+            #     ax[2][col_idx].set_title(f"{key.capitalize()} Sensitivity")
+            #     ax[2][col_idx].grid(True)
 
-            # Plot specificity curves
-            for col_idx, (key, value) in enumerate(self.specificity.items()):
-                label = f"{target_name}"
-                ax[3][col_idx].plot(list(map(lambda x: x[-1][i], value)), label=label)
-                ax[3][col_idx].legend(loc="best")
-                ax[3][col_idx].set_title(f"{key.capitalize()} Specificity")
-                ax[3][col_idx].grid(True)
+            # # Plot specificity curves
+            # for col_idx, (key, value) in enumerate(self.specificity.items()):
+            #     label = f"{target_name}"
+            #     ax[3][col_idx].plot(list(map(lambda x: x[-1][i], value)), label=label)
+            #     ax[3][col_idx].legend(loc="best")
+            #     ax[3][col_idx].set_title(f"{key.capitalize()} Specificity")
+            #     ax[3][col_idx].grid(True)
 
-            # Plot balanced accuracy curves
-            for col_idx, (key, value) in enumerate(self.balanced_accuracy.items()):
-                label = f"{target_name}"
-                ax[4][col_idx].plot(list(map(lambda x: x[-1][i], value)), label=label)
-                ax[4][col_idx].legend(loc="best")
-                ax[4][col_idx].set_title(f"{key.capitalize()} Balanced Accuracy")
-                ax[4][col_idx].grid(True)
+            # # Plot balanced accuracy curves
+            # for col_idx, (key, value) in enumerate(self.balanced_accuracy.items()):
+            #     label = f"{target_name}"
+            #     ax[4][col_idx].plot(list(map(lambda x: x[-1][i], value)), label=label)
+            #     ax[4][col_idx].legend(loc="best")
+            #     ax[4][col_idx].set_title(f"{key.capitalize()} Balanced Accuracy")
+            #     ax[4][col_idx].grid(True)
 
         plt.tight_layout()
         fig.savefig(filepath)
 
     def get_results(self) -> pd.DataFrame:
-        n_metrics = len(self.loss) + len(self.accuracy) + len(self.sensitivity) +\
-                    len(self.specificity) + len(self.balanced_accuracy) + 1
+        n_metrics = len(self.loss) + len(self.accuracy) + 1
         start_index = 0
         columns = []
         results = np.zeros((len(self.decoder_names), n_metrics))
 
-        # State change loss, same value for each row (independent of decoder)
-        results[:, start_index] = [self.state_change_loss[-1][-1]]*len(self.decoder_names)
-        columns.append('State change loss')
-        start_index += 1
+        # State change loss, same value for each row (if present)
+        if self.state_change_loss:
+            results[:, start_index] = [self.state_change_loss[-1][-1]] * len(self.decoder_names)
+            columns.append('State change loss')
+            start_index += 1
 
         # Losses
         for j, (key, value) in enumerate(self.loss.items()):
@@ -123,29 +123,31 @@ class MultiModNHistory():
                 results[i, j+start_index] = value[-1][-1][i]
         start_index += len(self.accuracy)
 
-        # Sensitivities
-        for j, (key, value) in enumerate(self.sensitivity.items()):
-            columns.append(f'{display_title(key)} sensitivity')
 
-            for i, _ in enumerate(self.decoder_names):
-                results[i, j+start_index] = value[-1][-1][i]
-        start_index += len(self.sensitivity)
 
-        # Specificities
-        for j, (key, value) in enumerate(self.specificity.items()):
-            columns.append(f'{display_title(key)} specificity')
+        # # Sensitivities
+        # for j, (key, value) in enumerate(self.sensitivity.items()):
+        #     columns.append(f'{display_title(key)} sensitivity')
 
-            for i, _ in enumerate(self.decoder_names):
-                results[i, j+start_index] = value[-1][-1][i]
-        start_index += len(self.specificity)
+        #     for i, _ in enumerate(self.decoder_names):
+        #         results[i, j+start_index] = value[-1][-1][i]
+        # start_index += len(self.sensitivity)
 
-        # Balances accuracies
-        for j, (key, value) in enumerate(self.balanced_accuracy.items()):
-            columns.append(f'{display_title(key)} balanced accuracy')
+        # # Specificities
+        # for j, (key, value) in enumerate(self.specificity.items()):
+        #     columns.append(f'{display_title(key)} specificity')
 
-            for i, _ in enumerate(self.decoder_names):
-                results[i, j+start_index] = value[-1][-1][i]
-        start_index += len(self.balanced_accuracy)
+        #     for i, _ in enumerate(self.decoder_names):
+        #         results[i, j+start_index] = value[-1][-1][i]
+        # start_index += len(self.specificity)
+
+        # # Balances accuracies
+        # for j, (key, value) in enumerate(self.balanced_accuracy.items()):
+        #     columns.append(f'{display_title(key)} balanced accuracy')
+
+        #     for i, _ in enumerate(self.decoder_names):
+        #         results[i, j+start_index] = value[-1][-1][i]
+        # start_index += len(self.balanced_accuracy)
 
         df = pd.DataFrame(results, columns=columns)
         df.index = self.decoder_names

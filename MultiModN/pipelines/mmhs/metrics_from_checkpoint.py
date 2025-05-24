@@ -2,9 +2,11 @@ import torch
 import argparse
 import pickle as pkl
 from os import path as o
+import os
 import sys
 sys.path.append(o.abspath(o.join(o.dirname(sys.modules[__name__].__file__), "../..")))
 from pathlib import Path
+import pandas as pd
 
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
@@ -33,6 +35,7 @@ def main(args):
     encoders = [image_encoder, text_encoder, tweet_encoder]
 
     n_labels = 4
+    batch_size = 1024
     decoders = [ClassDecoder(state_size, n_labels, activation=torch.nn.Softmax(dim=1))]
     model = MultiModN(state_size, encoders, decoders, 0.7, 0.3, device=device)
 
@@ -44,10 +47,17 @@ def main(args):
 
     # Load data
     path_to_mmhs = '../../../MMHS150K/'
-    df = preprocessing(path_to_mmhs)
+    pickle_path = os.path.join(path_to_mmhs, "df.pkl")
+
+    if os.path.exists(pickle_path):
+        df = pd.read_pickle(pickle_path)
+    else:
+        df = preprocessing(path_to_mmhs) 
+        df.to_pickle(pickle_path)
+
     _, _, val_df = data_splitting(df, path_to_mmhs)
     val_dataset = MMHSDataset(val_df, root_dir=path_to_mmhs)
-    val_loader = DataLoader(val_dataset, batch_size=1024)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size)
 
     print(f"Loaded validation set with {len(val_dataset)} samples")
 
@@ -56,7 +66,8 @@ def main(args):
     history = MultiModNHistory(targets=["label"])
     print("📊 Evaluating model on validation set...")
     metrics = model.test(val_loader, criterion, history, tag="val", log_results=True)
-
+    f1, acc, mae = metrics[0]
+    print(f"F1 (macro): {f1:.4f}   Acc: {acc:.4f}   MAE: {mae:.4f}")
     print("✅ Evaluation complete. Final metrics:")
     history.print_results()
 

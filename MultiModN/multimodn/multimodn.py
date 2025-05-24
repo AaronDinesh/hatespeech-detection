@@ -15,40 +15,66 @@ import torch.nn as nn
 import numpy as np
 from torchsummary import summary
 
-from torchmetrics import ConfusionMatrix, F1Score, ROC, PrecisionRecallCurve, Accuracy, AUROC
+from torchmetrics import ConfusionMatrix, F1Score, ROC, PrecisionRecallCurve, Accuracy, AUROC, MeanAbsoluteError
 
 performance_metrics = ['f1', 'auc',  'accuracy', 'sensitivity', 'specificity', 'fpr', 'tpr', 'precision', 'recall', \
     'tn', 'fp', 'fn', 'tp', 'thr_roc', 'thr_pr']
 
 # Calculation of various performance metrics for the binary classification task (default)
-def get_performance_metrics(y_true, y_pred, y_prob):
-    f1_score = F1Score(task="binary", average = 'macro')
-    roc = ROC(task="binary")
-    pr_curve = PrecisionRecallCurve(task="binary")
-    accuracy_score = Accuracy(task="binary")
-    roc_auc_score = AUROC(task="binary", average = 'macro')
-    confmat = ConfusionMatrix(task="binary")
+# def get_performance_metrics(y_true, y_pred, y_prob):
+#     f1_score = F1Score(task="binary", average = 'macro')
+#     roc = ROC(task="binary")
+#     pr_curve = PrecisionRecallCurve(task="binary")
+#     accuracy_score = Accuracy(task="binary")
+#     roc_auc_score = AUROC(task="binary", average = 'macro')
+#     confmat = ConfusionMatrix(task="binary")
     
-    cm = confmat(y_pred, y_true)
-    tp = cm[1][1] 
-    fp = cm[0][1]
-    fn = cm[1][0]
-    tn = cm[0][0]
+#     cm = confmat(y_pred, y_true)
+#     tp = cm[1][1] 
+#     fp = cm[0][1]
+#     fn = cm[1][0]
+#     tn = cm[0][0]
     
-    if (tp + fn) != 0:
-        sensitivity = tp / (tp + fn)
-    else:
-        sensitivity = 0
-    if (tn + fp) != 0:
-        specificity = tn / (tn + fp)   
-    else:
-        specificity = 0
+#     if (tp + fn) != 0:
+#         sensitivity = tp / (tp + fn)
+#     else:
+#         sensitivity = 0
+#     if (tn + fp) != 0:
+#         specificity = tn / (tn + fp)   
+#     else:
+#         specificity = 0
         
-    fpr, tpr, thr_roc = roc(y_prob, y_true)   
-    precision, recall, thr_pr = pr_curve(y_prob, y_true)   
+#     fpr, tpr, thr_roc = roc(y_prob, y_true)   
+#     precision, recall, thr_pr = pr_curve(y_prob, y_true)   
     
-    return f1_score(y_prob, y_true), roc_auc_score(y_prob, y_true), accuracy_score(y_pred, y_true), sensitivity, specificity, fpr, tpr, precision, recall, \
-      tn, fp, fn, tp, thr_roc, thr_pr
+#     return f1_score(y_prob, y_true), roc_auc_score(y_prob, y_true), accuracy_score(y_pred, y_true), sensitivity, specificity, fpr, tpr, precision, recall, \
+#       tn, fp, fn, tp, thr_roc, thr_pr
+
+def get_performance_metrics(
+    y_true: Tensor, 
+    y_pred: Tensor
+) -> Tuple[float, float]:
+    """
+    Computes macro-F1 and accuracy for a 4-class classification task.
+
+    Args:
+        y_true:   LongTensor of shape [N] with values in {0,1,2,3}
+        y_pred:   LongTensor of shape [N] with predicted classes
+
+    Returns:
+        (f1_macro, accuracy) as Python floats
+    """
+    # initialize metrics
+    f1 = F1Score(task="multiclass", num_classes=4, average="macro").to(y_true.device)
+    acc = Accuracy(task="multiclass", num_classes=4).to(y_true.device)
+    mae_m = MeanAbsoluteError().to(y_true.device)
+
+    # compute
+    f1_score = f1(y_pred, y_true)
+    accuracy = acc(y_pred, y_true)
+    mae = mae_m(y_pred, y_true)
+
+    return f1_score.item(), accuracy.item(), mae.item()
 
 def compute_metrics(tp, tn, fp, fn, cm, enc_idx, dec_idx):
     if cm is not None:
@@ -426,7 +452,7 @@ class MultiModN(nn.Module):
         # fn_prediction = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
 
         with torch.no_grad():
-            for batch_idx, batch in enumerate(test_loader):
+            for batch_idx, batch in tqdm(enumerate(test_loader)):
                 data, target, encoder_sequence = (list(batch) + [None])[:3]
 
                 batch_size = target.shape[0]
@@ -561,7 +587,8 @@ class MultiModN(nn.Module):
             output_decoder_epoch_dec_idx = torch.div(output_decoder_epoch_dec_idx, torch.sum(output_decoder_epoch_dec_idx, dim =1).reshape(-1,1))
             _ , prediction_epoch_dec_idx = torch.max(output_decoder_epoch_dec_idx, dim=1)       
             target_decoder_epoch_dec_idx = target_decoder_epoch[:, dec_idx]     
-            results[dec_idx] = get_performance_metrics(target_decoder_epoch_dec_idx, prediction_epoch_dec_idx, output_decoder_epoch_dec_idx[:,1])
+            # results[dec_idx] = get_performance_metrics(target_decoder_epoch_dec_idx, prediction_epoch_dec_idx, output_decoder_epoch_dec_i dx[:,1])
+            results[dec_idx] = get_performance_metrics(target_decoder_epoch_dec_idx, prediction_epoch_dec_idx)
         return results     
 
 
