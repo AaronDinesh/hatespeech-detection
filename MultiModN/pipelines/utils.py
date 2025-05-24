@@ -59,6 +59,14 @@ def parse_args():
         type=string_to_bool,
     )
 
+    parser.add_argument(
+        '-e', '--env-path',
+        dest='env_path',
+        help='Path to environment',
+        required=True,
+        type=str,
+    )
+
     return parser.parse_args()
 
 

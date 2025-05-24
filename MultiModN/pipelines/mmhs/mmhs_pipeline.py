@@ -23,11 +23,21 @@ import pickle as pkl
 import glob
 import re
 from pathlib import Path
+import wandb
+from dotenv import load_dotenv
     
 def main():
+    
+
+
     PIPELINE_NAME = utils.extract_pipeline_name(sys.argv[0])
     print('Running ̣{}...'.format(utils.get_display_name(PIPELINE_NAME)))
     args = utils.parse_args()
+    load_dotenv(args.env_path)
+
+    wandb_logger = wandb.init(project="multimodn", name="multimodn-run")
+
+
 
     torch.manual_seed(args.seed)
 

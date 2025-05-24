@@ -317,6 +317,7 @@ class MultiModN(nn.Module):
         last_epoch: Optional[bool] = False,
         checkpoint_dir: Optional[str] = None,
         checkpoint_every: int = 5,
+        wandb_logger = None
     ):
         # If log interval is given and logger is not, use print as default logger
         if log_interval and not logger:
@@ -410,6 +411,13 @@ class MultiModN(nn.Module):
                     f"\tErr loss: {global_err_loss.item():.4f}\n"
                     f"\tState change: {global_state_change.item():.4f}"
                 )
+
+                wandb_logger.log({
+                    "loss": loss.item(),
+                    "err_loss": global_err_loss.item(),
+                    "state_change": global_state_change.item(),
+                    "accuracy": n_correct_epoch / n_samples_epoch
+                })
             
             err_loss_epoch /= n_batches
             state_change_epoch /= n_batches
