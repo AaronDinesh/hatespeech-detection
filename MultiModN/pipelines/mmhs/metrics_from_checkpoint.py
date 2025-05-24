@@ -65,17 +65,27 @@ def main(args):
     criterion = CrossEntropyLoss()
     history = MultiModNHistory(targets=["label"])
     print("📊 Evaluating model on validation set...")
-    metrics = model.test(val_loader, criterion, history, tag="val", log_results=True)
+    # metrics = model.test(val_loader, criterion, history, tag="val", log_results=True)
+    metrics, preds = model.test(val_loader, criterion, history, tag='val', log_results=True)
     f1, acc, mae = metrics[0]
-    print(f"F1 (macro): {f1:.4f}   Acc: {acc:.4f}   MAE: {mae:.4f}")
     print("✅ Evaluation complete. Final metrics:")
-    history.print_results()
+    print(f"F1 (macro): {f1:.4f}   Acc: {acc:.4f}   MAE: {mae:.4f}")
+    # history.print_results()
 
     if args.save_csv:
-        Path("results").mkdir(exist_ok=True)
-        csv_path = f"results/val_metrics_from_{Path(args.ckpt).stem}.csv"
-        history.save_results(csv_path)
-        print(f"Saved results to {csv_path}")
+        results_dir = "results"
+        Path(results_dir).mkdir(exist_ok=True)
+        # save per-sample predictions
+        df = val_df.reset_index(drop=True).copy()
+        df["pred_label"] = preds
+        preds_path = f"{results_dir}/val_predictions_from_{Path(args.ckpt).stem}.csv"
+        df.to_csv(preds_path, index=False)
+        print(f"Saved per-sample predictions to {preds_path}")
+
+        summary_txt =  f"{results_dir}/val_summary_{Path(args.ckpt).stem}.txt"
+        with open(summary_txt, "w") as out:
+            out.write(f"F1 (macro): {f1:.4f}   Acc: {acc:.4f}   MAE: {mae:.4f}\n")
+        print(f"Saved scalar summary to {summary_txt}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
