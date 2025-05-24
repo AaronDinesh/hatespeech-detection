@@ -24,6 +24,29 @@ def load_img_text(row_id):
         return None
 
 
+def rebalance_dataset(df):
+    # 1. Separate by label
+    df_0 = df[df['label'] == 0]
+    df_1 = df[df['label'] == 1]
+    df_2 = df[df['label'] == 2]
+    df_3 = df[df['label'] == 3]
+
+    # 2. Remove half of label 0 and label 1 randomly
+    df_0_down = df_0.sample(frac=0.5, random_state=42).reset_index(drop=True)
+    df_1_down = df_1.sample(frac=0.5, random_state=42).reset_index(drop=True)
+
+    # 3. Double the label 3 rows
+    df_3_doubled = pd.concat([df_3, df_3], ignore_index=True)
+
+    # 4. Combine the new DataFrame
+    df_new = pd.concat([df_0_down, df_1_down, df_2, df_3_doubled], ignore_index=True)
+
+    # 5. Shuffle the combined DataFrame
+    df_new = df_new.sample(frac=1, random_state=42).reset_index(drop=True)
+    return df_new
+
+
+
 def preprocessing(data_dir):
     df = pd.read_json(os.path.join(data_dir, 'MMHS150K_GT.json'),\
                       lines=False, orient='index', convert_dates=False)
@@ -62,6 +85,7 @@ def preprocessing(data_dir):
 
     MM_df = df[['img', 'img_text','tweet_text','label','id']].copy()
     # print(MM_df[MM_df['img_text'].notna()].head())
+    MM_df = rebalance_dataset(MM_df)
     return MM_df
 
 def data_splitting(MM_df, data_dir):
@@ -80,7 +104,7 @@ def data_splitting(MM_df, data_dir):
     test_df =  MM_df[ MM_df['id'].isin(test_ids)].copy()
     val_df =  MM_df[ MM_df['id'].isin(val_ids)].copy()
 
-    return train_df, test_df, val_df
+    return train_df.head(10), test_df, val_df.head(10)
 
 
 
