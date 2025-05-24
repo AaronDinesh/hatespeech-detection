@@ -455,7 +455,8 @@ def main(args):
         num_sanity_val_steps=0,
         logger=wandb_logger,
         strategy=DDPStrategy(find_unused_parameters=True),
-        enable_checkpointing=True
+        enable_checkpointing=True,
+        default_root_dir=args.checkpoint_save_path
     )
 
     trainer.fit(model_module)
