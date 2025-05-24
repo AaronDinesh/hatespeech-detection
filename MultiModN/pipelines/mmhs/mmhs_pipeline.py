@@ -32,22 +32,23 @@ def main():
     torch.manual_seed(args.seed)
 
     device = torch.device( "cuda" if torch.cuda.is_available() else "cpu")
+    print('using gpu:', torch.cuda.is_available())
 
     features = ['image', 'img_text', 'tweet_text']
     
     targets = ['label']
 
     # Batch size: set 0 for full batch
-    batch_size = 4
+    batch_size = 1024
 
     # Representation state size
     state_size = 512
 
     learning_rate = 0.01
-    epochs = 3 if not args.epoch else args.epoch
+    epochs = 5 if not args.epoch else args.epoch
 
     ckpt_dir          = "./checkpoint"
-    ckpt_every_iter   = 5                 # 5 iterations, not epochs
+    ckpt_every_iter   = 5                # iterations, not epochs
     os.makedirs(ckpt_dir, exist_ok=True)
 
     global_step = 0                       # will count mini-batches

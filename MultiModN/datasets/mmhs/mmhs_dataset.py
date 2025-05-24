@@ -20,7 +20,7 @@ def load_img_text(row_id):
             data = json.load(f)
             return data.get("img_text", None)
     except Exception as e:
-        print(f"Warning: Could not read {file_path} — {e}")
+        # print(f"Warning: Could not read {file_path} — {e}")
         return None
 
 
@@ -45,7 +45,7 @@ def preprocessing(data_dir):
                 data = json.load(f)
                 return data.get("img_text", None)
         except Exception as e:
-            print(f"Warning: Could not read {file_path} — {e}")
+            # print(f"Warning: Could not read {file_path} — {e}")
             return None
 
     # Apply the function to the 'id' column to create a new column

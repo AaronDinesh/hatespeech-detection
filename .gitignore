@@ -12,3 +12,4 @@ papers
 external/vilio/data
 **/hf_models/
 **/wandb/
+external/vilio/

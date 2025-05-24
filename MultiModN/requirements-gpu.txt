@@ -1,0 +1,14 @@
+# core stack
+matplotlib==3.5.0
+numpy==1.22.3
+pandas==1.3.4
+pyarrow==10.0.1
+scikit_learn==1.1.3
+tqdm==4.64.0
+torchsummary==1.5.1
+torchmetrics==0.11.4    # binary-agnostic, leave as-is\
+
+# ❷ NLP stack
+transformers==4.36.2
+tokenizers==0.15.2
+huggingface-hub==0.20.3
