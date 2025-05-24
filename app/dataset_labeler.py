@@ -45,6 +45,15 @@ class AnnotationApp:
         self.master.title("Hatefulness Annotation Tool")
         self.master.bind("<Key>", self.key_pressed)
 
+        self.remaining_label = tk.Label(
+            master,
+            text="",
+            font=("Arial", 24, "bold"),
+            fg="blue"
+        )
+        self.remaining_label.pack(pady=10)
+
+
         self.image_label = tk.Label(master)
         self.image_label.pack()
 
@@ -56,10 +65,14 @@ class AnnotationApp:
 
         self.status = tk.Label(master, text="", fg="red")
         self.status.pack(pady=5)
+        self.num_images = len(self.df)
 
         self.display_current()
 
     def display_current(self):
+        remaining = self.num_images - self.index
+        self.remaining_label.config(text=f"Images Remaining: {remaining}")
+
         row = self.df.iloc[self.index]
         try:
             img = Image.open(row['img_path']).resize((400, 400))
@@ -95,6 +108,7 @@ class AnnotationApp:
             if self.index < len(self.df):
                 self.display_current()
             else:
+                self.remaining_label.config(text="Images Remaining: 0")
                 self.status.config(text="All images annotated. Press any key to exit.")
                 self.image_label.config(image='')
                 self.text1.config(text='')
@@ -120,7 +134,8 @@ def main(args):
             completed_annotations.add(line['id'])
 
     if limit - len(completed_annotations) <= 0:
-        print(f"You have annotated more images than the limit specified. Please increase the limit to annotate more images.") 
+        print(f"You have annotated more images than the limit specified. Please increase the limit to above {len(completed_annotations)} to annotate more images.") 
+        return
 
     if len(completed_annotations) > 0:
         print(f"You have already annotated {len(completed_annotations)} images. You have {limit - len(completed_annotations)} images to annotate.")
