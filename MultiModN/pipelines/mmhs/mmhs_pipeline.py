@@ -57,7 +57,14 @@ def main():
     ###### Create dataset and data loaders
     ##############################################################################
     path_to_mmhs = '../../../MMHS150K/'
-    dataset = preprocessing(path_to_mmhs)
+    pickle_path = os.path.join(path_to_mmhs, "df.pkl")
+
+    if os.path.exists(pickle_path):
+        dataset = pd.read_pickle(pickle_path)
+    else:
+        dataset = preprocessing(path_to_mmhs) 
+        dataset.to_pickle(pickle_path)
+
     print('Loaded data:')
     train_data, test_data, val_data = data_splitting(dataset, path_to_mmhs)
     print('Split data')
