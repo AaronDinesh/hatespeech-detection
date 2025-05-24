@@ -3,3 +3,4 @@ from .rnn_encoder import *
 from .lstm_encoder import *
 from .mlp_encoder import *
 from .slp_encoders import *
+from .lstm_text_encoder import *

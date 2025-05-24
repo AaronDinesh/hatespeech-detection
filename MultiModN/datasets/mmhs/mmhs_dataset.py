@@ -7,7 +7,10 @@ from sklearn.preprocessing import StandardScaler
 from torch import Tensor
 import pandas as pd
 import json
-from PIL import image
+from PIL import Image
+from transformers import AutoTokenizer
+import torch
+import torchvision.transforms as transforms
 
 
 def load_img_text(row_id):
@@ -91,6 +94,7 @@ class MMHSDataset(Dataset):
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                 std=[0.229, 0.224, 0.225])
         ])
+        self.tokenizer = AutoTokenizer.from_pretrained("vinai/bertweet-base", use_fast=False)
 
     def __len__(self):
         return len(self.df)
@@ -107,9 +111,13 @@ class MMHSDataset(Dataset):
         img_text = row['img_text'] or ""     # placeholder if missing
         tweet_text = row['tweet_text'] or ""
 
-        img_text_tensor = torch.tensor([len(img_text)], dtype=torch.float32)
-        tweet_text_tensor = torch.tensor([len(tweet_text)], dtype=torch.float32)
+        # Tokenize using BERTweet
+        tweet_enc = self.tokenizer(tweet_text, return_tensors="pt", padding="max_length", truncation=True, max_length=32)
+        img_enc = self.tokenizer(img_text, return_tensors="pt", padding="max_length", truncation=True, max_length=32)
+        
+        tweet_ids = tweet_enc["input_ids"].squeeze(0)
+        img_ids   = img_enc["input_ids"].squeeze(0)
 
-        label = torch.tensor(int(row['label']), dtype=torch.long)
-
-        return (image, img_text, tweet_text), label
+        raw_label = int(row['label'])
+        label = torch.tensor([raw_label], dtype=torch.long)   # shape [1]
+        return [image, img_ids, tweet_ids], label

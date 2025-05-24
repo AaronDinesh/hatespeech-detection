@@ -3,6 +3,8 @@ import torch
 from torch.optim import Optimizer
 from torch import Tensor
 from torch.utils.data import DataLoader
+from tqdm import tqdm
+import os 
 
 from multimodn.encoders.multimod_encoder import MultiModEncoder
 from multimodn.decoders.multimod_decoder import MultiModDecoder
@@ -95,6 +97,8 @@ class MultiModN(nn.Module):
             log_interval: Optional[int] = None,
             logger: Optional[Callable] = None,
             last_epoch: Optional[bool] = False,
+            checkpoint_dir: Optional[str] = None,
+            checkpoint_every: int = 5,
     ) -> None:
         # If log interval is given and logger is not, use print as default logger
         if log_interval and not logger:
@@ -113,8 +117,12 @@ class MultiModN(nn.Module):
         tn_epoch = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
         fp_epoch = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
         fn_epoch = torch.zeros((len(self.encoders) + 1, len(self.decoders))).to(self.device)
-
-        for batch_idx, batch in enumerate(train_loader):
+        # ------------------------------------------------------------------
+        # initialise (or retrieve) running iteration counter
+        if not hasattr(self, "_global_step"):
+            self._global_step = 0
+        # ------------------------------------------------------------------
+        for batch_idx, batch in tqdm(enumerate(train_loader),leave = False):
             # Note: for multiclass target should be = [0, n_classes -1] for the correctness of CrossEntropyLoss
             data, target, encoder_sequence = (list(batch) + [None])[:3]
             batch_size = target.shape[0]
@@ -202,6 +210,26 @@ class MultiModN(nn.Module):
             )
             loss.backward()
             optimizer.step()
+
+            self._global_step += 1
+
+            # ───────────────── checkpoint every N iterations ──────────────────
+            if checkpoint_dir and (self._global_step % checkpoint_every == 0):
+                os.makedirs(checkpoint_dir, exist_ok=True)
+                ckpt_path = os.path.join(
+                    checkpoint_dir, f"step{self._global_step:08d}.pt"
+                )
+                torch.save(
+                    {
+                        "step":  self._global_step,
+                        "model": self.state_dict(),
+                        "optim": optimizer.state_dict(),
+                    },
+                    ckpt_path,
+                )
+                if logger:
+                    logger(f"💾  saved checkpoint → {ckpt_path}")
+            # ------------------------------------------------------------------
 
             err_loss_epoch += err_loss.detach().numpy()
             state_change_epoch += state_change.detach().numpy()
