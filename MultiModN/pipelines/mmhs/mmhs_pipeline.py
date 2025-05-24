@@ -161,7 +161,7 @@ def main():
     ###### Train and Test model
     ##############################################################################
     for _ in trange(epochs):
-        model.train_epoch(
+        model.train_epoch_mmhs(
             train_loader,
             optimizer,
             criterion,
