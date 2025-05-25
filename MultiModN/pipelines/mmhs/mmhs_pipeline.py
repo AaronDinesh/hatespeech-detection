@@ -59,7 +59,7 @@ def main():
     state_size = 512
     print('state_size: ', state_size)
 
-    learning_rate = 0.01
+    learning_rate = 0.001
     print('learning_rate: ', learning_rate)
     epochs = 100 if not args.epoch else args.epoch
     print('epochs: ', epochs)
@@ -118,11 +118,11 @@ def main():
     n_labels = 4            # 0,1,2,3
     decoders = [ClassDecoder(state_size, n_labels, activation=Identity())]
 
-    model = MultiModN(state_size, encoders, decoders, 0.9, 0.1, device = device)
+    model = MultiModN(state_size, encoders, decoders, 0.7, 0.3, device = device)
     print('loaded Encoders and Decoders')
-    optimizer = torch.optim.Adam(list(model.parameters()), learning_rate)
+    optimizer = torch.optim.Adam(list(model.parameters()), learning_rate, weight_decay=1e-4)
 
-    warmup_iters = 5
+    warmup_iters = 10
     scheduler = LinearLR(
         optimizer,
         start_factor=1,          # begin at 10 % of base LR
@@ -182,8 +182,6 @@ def main():
             optimizer,
             criterion,
             history,
-            checkpoint_dir=ckpt_dir,
-            checkpoint_every=5,
             log_interval=1,
             wandb_logger=wandb_logger
         )
