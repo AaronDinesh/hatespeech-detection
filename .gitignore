@@ -15,3 +15,4 @@ external/vilio/data
 external/vilio/
 **/checkpoints/
 **/lora_weights/
+**/*.jsonl.gz
