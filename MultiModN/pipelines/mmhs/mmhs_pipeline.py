@@ -35,12 +35,15 @@ def main():
     # load_dotenv(args.env_path)
     # 1) Point to your file (for example, ~/.config/wandb_api_key.txt)
     key_file = Path("./api_keys/api_key.txt")
-    SHARED_DRIVE = "/mnt/course-ee-559/scratch/models/student_models/"
-    jb_id = 3
+    # SHARED_DRIVE = "/mnt/course-ee-559/scratch/models/student_models/mmn/"
+
+
+    jb_id = 8
+    print(f'Job id: {jb_id}')
     # 2) Read and strip any whitespace/newlines
     api_key = key_file.read_text().strip()
     os.environ["WANDB_API_KEY"] = api_key
-    wandb_logger = wandb.init(project="multimodn", name="multimodn-run")
+    wandb_logger = wandb.init(project="multimodn", name="multimodn-run{jb_id}")
 
     torch.manual_seed(args.seed)
 
@@ -56,7 +59,7 @@ def main():
     print('batch_size: ', batch_size)
 
     # Representation state size
-    state_size = 512
+    state_size = 1024
     print('state_size: ', state_size)
 
     learning_rate = 0.001
@@ -64,7 +67,7 @@ def main():
     epochs = 100 if not args.epoch else args.epoch
     print('epochs: ', epochs)
 
-    ckpt_dir          = SHARED_DRIVE + f"checkpoint{jb_id}"
+    ckpt_dir          = f"checkpoints/checkpoint{jb_id}"
     # ckpt_every_iter   = 40                # iterations, not epochs
     os.makedirs(ckpt_dir, exist_ok=True)
 
@@ -118,7 +121,9 @@ def main():
     n_labels = 4            # 0,1,2,3
     decoders = [ClassDecoder(state_size, n_labels, activation=Identity())]
 
-    model = MultiModN(state_size, encoders, decoders, 0.7, 0.3, device = device)
+    sc_pen = 0.2
+    model = MultiModN(state_size, encoders, decoders, 1-sc_pen, sc_pen, device = device)
+    print('State_change_penalty: ', )
     print('loaded Encoders and Decoders')
     optimizer = torch.optim.Adam(list(model.parameters()), learning_rate, weight_decay=1e-4)
 
@@ -189,11 +194,12 @@ def main():
             metrics, val_preds = model.test_mmhs(val_loader, criterion, history,wandb_logger=wandb_logger, tag='val')
             val_df_epoch = val_data.reset_index(drop=True).copy()
             val_df_epoch['predicted_label'] = val_preds
-            os.makedirs(f'results{jb_id}', exist_ok=True)
-            csv_name = f"results{jb_id}/val_preds_epoch{epoch:02d}.csv"
+            os.makedirs(f'results/results{jb_id}', exist_ok=True)
+            csv_name = f"results/results{jb_id}/val_preds_epoch{epoch:02d}.csv"
             val_df_epoch.to_csv(csv_name, index=False)
             print(f"Saved validation predictions → {csv_name}")
             wandb_logger.log(metrics)
+        if epoch % 20 == 0:
             os.makedirs(ckpt_dir, exist_ok=True)
             ckpt_path = os.path.join(
                 ckpt_dir, f"step_{epoch}.pt"

@@ -364,7 +364,7 @@ class MultiModN(nn.Module):
                 for enc_idx, data_idx in self.get_encoder_iterable(encoder_sequence, shuffle_mode=self.shuffle_mode, train=True):
                     n_samples_epoch[enc_idx + 1] += batch_size
                     new_state = self.encoders[enc_idx](states[-1], data[data_idx])
-                    state_change[enc_idx] = torch.mean((new_state - states[-1])**2)
+                    state_change[enc_idx] = torch.mean(torch.abs(new_state - states[-1]))
                     output_decoder = self.decoders[0](new_state)
                     _, prediction = torch.max(output_decoder, dim=1)
                     err_loss[enc_idx + 1][0] = criterion(output_decoder, target)
