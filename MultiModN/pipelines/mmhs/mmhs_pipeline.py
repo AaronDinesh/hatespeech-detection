@@ -43,7 +43,7 @@ def main():
     # 2) Read and strip any whitespace/newlines
     api_key = key_file.read_text().strip()
     os.environ["WANDB_API_KEY"] = api_key
-    wandb_logger = wandb.init(project="multimodn", name="multimodn-run{jb_id}")
+    wandb_logger = wandb.init(project="multimodn", name="multimodn-run-MAE-{jb_id}")
 
     torch.manual_seed(args.seed)
 
@@ -59,7 +59,7 @@ def main():
     print('batch_size: ', batch_size)
 
     # Representation state size
-    state_size = 1024
+    state_size = 256
     print('state_size: ', state_size)
 
     learning_rate = 0.001
