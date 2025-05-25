@@ -26,6 +26,7 @@ from pathlib import Path
 import wandb
 # from dotenv import load_dotenv
 import pandas as pd
+import numpy as np
     
 def main():
     PIPELINE_NAME = utils.extract_pipeline_name(sys.argv[0])
@@ -50,16 +51,16 @@ def main():
     targets = ['label']
 
     # Batch size: set 0 for full batch
-    batch_size = 1024
+    batch_size = 2048
 
     # Representation state size
     state_size = 512
 
-    learning_rate = 0.1
-    epochs = 3 if not args.epoch else args.epoch
+    learning_rate = 0.001
+    epochs = 50 if not args.epoch else args.epoch
 
     ckpt_dir          = "./checkpoint2"
-    ckpt_every_iter   = 5                # iterations, not epochs
+    ckpt_every_iter   = 40                # iterations, not epochs
     os.makedirs(ckpt_dir, exist_ok=True)
 
     global_step = 0                       # will count mini-batches
@@ -112,26 +113,26 @@ def main():
     n_labels = 4            # 0,1,2,3
     decoders = [ClassDecoder(state_size, n_labels, activation=Identity())]
 
-    model = MultiModN(state_size, encoders, decoders, 0.7, 0.3, device = device)
+    model = MultiModN(state_size, encoders, decoders, 0.9, 0.1, device = device)
     print('loaded Encoders and Decoders')
     optimizer = torch.optim.Adam(list(model.parameters()), learning_rate)
 
-    # warmup_iters = 1
-    # scheduler = LinearLR(
-    #     optimizer,
-    #     start_factor=1,          # begin at 10 % of base LR
-    #     end_factor=0.1,
-    #     total_iters=epochs 
-    # )
-    # warmup = LinearLR(
-    #     optimizer,
-    #     start_factor=0.1,          # ramps 0.1 → 1.0 over warm-up
-    #     end_factor=1.0,
-    #     total_iters=warmup_iters
-    # )
+    warmup_iters = 5
+    scheduler = LinearLR(
+        optimizer,
+        start_factor=1,          # begin at 10 % of base LR
+        end_factor=0.1,
+        total_iters=epochs -warmup_iters
+    )
+    warmup = LinearLR(
+        optimizer,
+        start_factor=0.1,          # ramps 0.1 → 1.0 over warm-up
+        end_factor=1.0,
+        total_iters=warmup_iters
+    )
     # Use SequentialLR to chain them
-    # scheduler = SequentialLR(optimizer, schedulers=[warmup, scheduler],
-                            # milestones=[warmup_iters])
+    scheduler = SequentialLR(optimizer, schedulers=[warmup, scheduler],
+                            milestones=[warmup_iters])
 
     criterion = CrossEntropyLoss()
 
@@ -170,7 +171,7 @@ def main():
     ##############################################################################
     ###### Train and Test model
     ##############################################################################
-    for _ in trange(epochs):
+    for epoch in trange(epochs):
         model.train_epoch_mmhs(
             train_loader,
             optimizer,
@@ -181,8 +182,15 @@ def main():
             log_interval=1,
             wandb_logger=wandb_logger
         )
-        model.test(val_loader, criterion, history, tag='val')
-        # scheduler.step()
+        if epoch % 5 == 0:
+            metrics, val_preds = model.test_mmhs(val_loader, criterion, history,wandb_logger=wandb_logger, tag='val')
+            val_df_epoch = val_data.reset_index(drop=True).copy()
+            val_df_epoch['predicted_label'] = val_preds
+            os.makedirs('results', exist_ok=True)
+            csv_name = f"results/val_preds_epoch{epoch:02d}.csv"
+            val_df_epoch.to_csv(csv_name, index=False)
+            print(f"Saved validation predictions → {csv_name}")
+        scheduler.step()
 
     ##############################################################################
     ###### Store model and history

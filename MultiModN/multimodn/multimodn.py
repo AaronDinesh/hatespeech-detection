@@ -437,6 +437,107 @@ class MultiModN(nn.Module):
             if last_epoch:
                 return self.text(train_loader, criterion, history=None)
 
+    @torch.no_grad()
+    def test_mmhs(
+        self,
+        data_loader: DataLoader,
+        criterion: nn.Module,
+        history: Optional[MultiModNHistory] = None,
+        log_interval: Optional[int] = None,
+        logger: Optional[Callable] = print,
+        tag: str = "test",
+        wandb_logger=None,
+    ):
+        """
+        A GPU‐accelerated evaluation loop mirroring train_epoch_mmhs.
+        """
+        self.eval()
+        n_stages  = len(self.encoders) + 1
+        n_batches = len(data_loader)
+
+        # on‐device accumulators
+        n_samples_epoch    = torch.ones((n_stages,1), device=self.device)
+        err_loss_epoch     = torch.zeros((n_stages,1), device=self.device)
+        n_correct_epoch    = torch.zeros((n_stages,1), device=self.device)
+        state_change_epoch = torch.zeros((n_stages-1), device=self.device)
+        # will hold all the batch‐wise final predictions
+        all_preds = []
+
+        for batch_idx, batch in enumerate(data_loader):
+            # unpack and send to GPU
+            (data, target, encoder_seq) = (list(batch) + [None])[:3]
+            data   = [d.to(self.device, non_blocking=True) for d in data]
+            target = target[:,0].to(self.device, non_blocking=True)  # single‐decoder
+            bsz    = target.size(0)
+
+            # per‐batch accumulators
+            err_loss     = torch.zeros((n_stages,1), device=self.device)
+            state_change = torch.zeros((n_stages-1), device=self.device)
+
+            # count samples for stage 0
+            n_samples_epoch[0] += bsz
+
+            # 1) initial state & decoder
+            state = self.init_state(bsz)
+            out   = self.decoders[0](state)
+            _, pred = out.max(dim=1)
+            err_loss[0][0] = criterion(out, target)
+            n_correct_epoch[0][0] += (pred == target).sum().float()
+
+            # 2) subsequent encoders + decoder
+            for enc_idx, data_idx in self.get_encoder_iterable(
+                    encoder_seq, shuffle_mode=self.shuffle_mode, train=False
+                ):
+                # encode, measure state change
+                new_state = self.encoders[enc_idx](state, data[data_idx])
+                state_change[enc_idx] = (new_state - state).pow(2).mean()
+                state = new_state
+
+                # decode
+                out2 = self.decoders[0](state)
+                _, pred2 = out2.max(dim=1)
+                err_loss[enc_idx+1][0] = criterion(out2, target)
+                n_correct_epoch[enc_idx+1][0] += (pred2 == target).sum().float()
+                n_samples_epoch[enc_idx+1] += bsz
+            all_preds.append(pred2.cpu().numpy())
+
+            # accumulate
+            err_loss_epoch     += err_loss
+            state_change_epoch += state_change
+
+            if log_interval and batch_idx % log_interval == 0:
+                mean_err = (err_loss / bsz).mean().item()
+                mean_acc = (n_correct_epoch / n_samples_epoch).mean().item()
+                logger(
+                    f"{tag.capitalize()} Batch {batch_idx+1}/{n_batches} "
+                    f"ErrLoss={mean_err:.4f} Acc={mean_acc:.4f}"
+                )
+                if wandb_logger:
+                    wandb_logger.log({
+                        f"{tag}/batch_err_loss": mean_err,
+                        f"{tag}/batch_accuracy": mean_acc,
+                    })
+
+        # finalize averages
+        err_loss_epoch     /= n_batches
+        state_change_epoch /= n_batches
+        accuracy_epoch      = n_correct_epoch / n_samples_epoch
+
+        # record in history
+        if history is not None:
+            history.loss.setdefault(tag, []).append(err_loss_epoch.cpu().numpy())
+            history.accuracy.setdefault(tag, []).append(accuracy_epoch.cpu().numpy())
+            history.state_change_loss.append(state_change_epoch.cpu().numpy())
+        
+        preds_array = np.concatenate(all_preds, axis=0)
+
+        # return the summary metrics if you want
+        return {
+            "err_loss":     err_loss_epoch.mean().item(),
+            "accuracy":     accuracy_epoch.mean().item(),
+            "state_change": state_change_epoch.mean().item(),
+        }, preds_array
+
     def test(
             self,
             test_loader: DataLoader,
