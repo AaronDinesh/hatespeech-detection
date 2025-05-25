@@ -8,7 +8,7 @@ import torch
 from torch.optim.lr_scheduler import LinearLR  
 from torch.optim.lr_scheduler import SequentialLR
 from torch.utils.data import DataLoader
-from torch.nn import CrossEntropyLoss
+from torch.nn import CrossEntropyLoss, Identity
 from multimodn.multimodn import MultiModN
 # from multimodn.encoders import LSTMEncoder
 from multimodn.encoders import resnet_encoder
@@ -33,7 +33,7 @@ def main():
     args = utils.parse_args()
     # load_dotenv(args.env_path)
     # 1) Point to your file (for example, ~/.config/wandb_api_key.txt)
-    key_file = "./api_keys/api_key.txt"
+    key_file = Path("./api_keys/api_key.txt")
 
     # 2) Read and strip any whitespace/newlines
     api_key = key_file.read_text().strip()
@@ -56,7 +56,7 @@ def main():
     state_size = 512
 
     learning_rate = 0.1
-    epochs = 5 if not args.epoch else args.epoch
+    epochs = 3 if not args.epoch else args.epoch
 
     ckpt_dir          = "./checkpoint2"
     ckpt_every_iter   = 5                # iterations, not epochs
@@ -68,7 +68,7 @@ def main():
     ###### Create dataset and data loaders
     ##############################################################################
     path_to_mmhs = '../../../MMHS150K/'
-    pickle_path = os.path.join(path_to_mmhs, "rebalanced_df.pkl")
+    pickle_path = os.path.join(path_to_mmhs, "df.pkl")
 
     if os.path.exists(pickle_path):
         dataset = pd.read_pickle(pickle_path)
@@ -110,35 +110,34 @@ def main():
     
     encoders = [image_encoder, text_encoder, tweet_encoder]
     n_labels = 4            # 0,1,2,3
-    decoders = [ClassDecoder(state_size, n_labels, activation=lambda x: x)]
+    decoders = [ClassDecoder(state_size, n_labels, activation=Identity())]
 
     model = MultiModN(state_size, encoders, decoders, 0.7, 0.3, device = device)
     print('loaded Encoders and Decoders')
     optimizer = torch.optim.Adam(list(model.parameters()), learning_rate)
 
-    warmup_iters = 5
-    scheduler = LinearLR(
-        optimizer,
-        start_factor=1,          # begin at 10 % of base LR
-        end_factor=0.1,
-        total_iters=epochs - warmup_iters
-    )
-    warmup = LinearLR(
-        optimizer,
-        start_factor=0.1,          # ramps 0.1 → 1.0 over warm-up
-        end_factor=1.0,
-        total_iters=warmup_iters
-    )
+    # warmup_iters = 1
+    # scheduler = LinearLR(
+    #     optimizer,
+    #     start_factor=1,          # begin at 10 % of base LR
+    #     end_factor=0.1,
+    #     total_iters=epochs 
+    # )
+    # warmup = LinearLR(
+    #     optimizer,
+    #     start_factor=0.1,          # ramps 0.1 → 1.0 over warm-up
+    #     end_factor=1.0,
+    #     total_iters=warmup_iters
+    # )
     # Use SequentialLR to chain them
-    scheduler = SequentialLR(optimizer, schedulers=[warmup, scheduler],
-                            milestones=[warmup_iters])
+    # scheduler = SequentialLR(optimizer, schedulers=[warmup, scheduler],
+                            # milestones=[warmup_iters])
 
     criterion = CrossEntropyLoss()
 
     history = MultiModNHistory(targets)
 
 
-    ckpt_dir = "./checkpoint"
     Path(ckpt_dir).mkdir(exist_ok=True)
 
     ckpts = sorted(
@@ -154,8 +153,8 @@ def main():
         # restore weights / optimiser / scheduler
         model.load_state_dict(payload["model"])
         optimizer.load_state_dict(payload["optim"])
-        if "sched" in payload and scheduler is not None:
-            scheduler.load_state_dict(payload["sched"])
+        # if "sched" in payload and scheduler is not None:
+        #     scheduler.load_state_dict(payload["sched"])
 
         # restore the running iteration counter used by train_epoch()
         model._global_step = payload.get("step", 0)
@@ -177,16 +176,34 @@ def main():
             optimizer,
             criterion,
             history,
-            checkpoint_dir="./checkpoint",
+            checkpoint_dir=ckpt_dir,
             checkpoint_every=5,
-            log_interval=1
+            log_interval=1,
+            wandb_logger=wandb_logger
         )
         model.test(val_loader, criterion, history, tag='val')
-        scheduler.step()
+        # scheduler.step()
 
     ##############################################################################
     ###### Store model and history
     ##############################################################################
+
+    os.makedirs(ckpt_dir, exist_ok=True)
+    final_ckpt = os.path.join(
+        ckpt_dir,
+        f"step{model._global_step:08d}.pt"
+    )
+    torch.save({
+        "step":  model._global_step,
+        "model": model.state_dict(),
+        "optim": optimizer.state_dict(),
+    }, final_ckpt)
+
+    print(f"💾  saved final checkpoint → {final_ckpt}")
+
+
+
+
     directory = o.join(o.dirname(os.path.realpath(__file__)), 'models')
 
     if args.save_model:
@@ -195,36 +212,36 @@ def main():
         model_path = o.join(directory, PIPELINE_NAME + '_model.pkl')
         pkl.dump(model, open(model_path, 'wb'))
 
-    if args.save_history:
-        if not o.exists(directory):
-            os.makedirs(directory)
-        history_path = o.join(directory, PIPELINE_NAME + '_history.pkl')
-        pkl.dump(history, open(history_path, 'wb'))
+    # if args.save_history:
+    #     if not o.exists(directory):
+    #         os.makedirs(directory)
+    #     history_path = o.join(directory, PIPELINE_NAME + '_history.pkl')
+    #     pkl.dump(history, open(history_path, 'wb'))
 
-    ##############################################################################
-    ###### Save learning curves
-    ##############################################################################
-    if args.save_plot:
-        directory = o.join(o.dirname(os.path.realpath(__file__)), 'plots')
-        if not o.exists(directory):
-            os.makedirs(directory)
-        plot_path = o.join(directory, PIPELINE_NAME + '.png')
+    # ##############################################################################
+    # ###### Save learning curves
+    # ##############################################################################
+    # if args.save_plot:
+    #     directory = o.join(o.dirname(os.path.realpath(__file__)), 'plots')
+    #     if not o.exists(directory):
+    #         os.makedirs(directory)
+    #     plot_path = o.join(directory, PIPELINE_NAME + '.png')
 
-        targets_to_display = targets
+    #     targets_to_display = targets
 
-        history.plot(plot_path, targets_to_display, show_state_change=False)
+    #     # history.plot(plot_path, targets_to_display, show_state_change=False)
 
-    ##############################################################################
-    ###### Display results and save them
-    ##############################################################################
-    if args.save_results:
-        directory = o.join(o.dirname(os.path.realpath(__file__)), 'results')
-        if not o.exists(directory):
-            os.makedirs(directory)
-        results_path = o.join(directory, PIPELINE_NAME + '.csv')
+    # ##############################################################################
+    # ###### Display results and save them
+    # ##############################################################################
+    # if args.save_results:
+    #     directory = o.join(o.dirname(os.path.realpath(__file__)), 'results')
+    #     if not o.exists(directory):
+    #         os.makedirs(directory)
+    #     results_path = o.join(directory, PIPELINE_NAME + '.csv')
 
-        history.print_results()
-        history.save_results(results_path)
+    #     history.print_results()
+    #     history.save_results(results_path)
 
 if __name__ == "__main__":
     main()

@@ -85,7 +85,7 @@ def preprocessing(data_dir):
 
     MM_df = df[['img', 'img_text','tweet_text','label','id']].copy()
     # print(MM_df[MM_df['img_text'].notna()].head())
-    MM_df = rebalance_dataset(MM_df)
+    # MM_df = rebalance_dataset(MM_df)
     return MM_df
 
 def data_splitting(MM_df, data_dir):
@@ -100,11 +100,11 @@ def data_splitting(MM_df, data_dir):
     val_ids = load_ids(os.path.join(data_dir, 'splits/val_ids.txt'))
 
     # Filter the DataFrame
-    train_df =  MM_df[ MM_df['id'].isin(train_ids)].copy()
+    train_df =  rebalance_dataset(MM_df[ MM_df['id'].isin(train_ids)].copy())
     test_df =  MM_df[ MM_df['id'].isin(test_ids)].copy()
     val_df =  MM_df[ MM_df['id'].isin(val_ids)].copy()
 
-    return train_df.head(10), test_df, val_df.head(10)
+    return train_df, test_df, val_df
 
 
 

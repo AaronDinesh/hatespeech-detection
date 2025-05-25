@@ -325,16 +325,16 @@ class MultiModN(nn.Module):
         self.train()
 
         # Prepare AMP scaler
-        scaler = torch.amp.GradScaler()
+        scaler = torch.cuda.amp.GradScaler()
 
         # Pre-epoch accumulators (on GPU)
         n_stages = len(self.encoders) + 1
         n_classes = self.decoders[0].n_classes
         n_batches = len(train_loader)
 
-        n_samples_epoch     = torch.ones(n_stages, device=self.device)
-        err_loss_epoch      = torch.zeros(n_stages, device=self.device)
-        n_correct_epoch     = torch.zeros(n_stages, device=self.device)
+        n_samples_epoch     = torch.ones((n_stages,1), device=self.device)
+        err_loss_epoch      = torch.zeros((n_stages,1), device=self.device)
+        n_correct_epoch     = torch.zeros((n_stages,1), device=self.device)
         state_change_epoch  = torch.zeros(n_stages - 1, device=self.device)
 
         if not hasattr(self, "_global_step"):
@@ -349,10 +349,10 @@ class MultiModN(nn.Module):
             optimizer.zero_grad()
 
             # Zero out per-batch metrics
-            err_loss       = torch.zeros(n_stages, device=self.device)
+            err_loss       = torch.zeros((n_stages,1), device=self.device)
             state_change   = torch.zeros(n_stages - 1, device=self.device)
 
-            with torch.amp.autocast():
+            with torch.cuda.amp.autocast():
                 states = [self.init_state(batch_size)]
 
                 output_decoder = self.decoders[0](states[-1])
@@ -401,22 +401,27 @@ class MultiModN(nn.Module):
                     logger(f"💾  saved checkpoint → {ckpt_path}")
             # ------------------------------------------------------------------
             
-            err_loss_epoch += err_loss.detach().numpy()
-            state_change_epoch += state_change.detach().numpy()
-
+            err_loss_epoch     += err_loss.detach()
+            state_change_epoch += state_change.detach()
+            accuracy_epoch = n_correct_epoch / n_samples_epoch  # this is a tensor/array
+            overall_acc   = accuracy_epoch.mean().item()  
+            last_acc = accuracy_epoch[-1].item()
             if log_interval and (batch_idx % log_interval == 0):
                 logger(
                     f"Batch {batch_idx + 1}/{n_batches}\n"
                     f"\tLoss: {loss.item():.4f}\n"
                     f"\tErr loss: {global_err_loss.item():.4f}\n"
-                    f"\tState change: {global_state_change.item():.4f}"
+                    f"\tState change: {global_state_change.item():.4f}\n"
+                    f"\tmean accuracy: {overall_acc:.4f}\n"
+                    f"\tlast accuracy: {last_acc:.4f}"
                 )
 
                 wandb_logger.log({
                     "loss": loss.item(),
                     "err_loss": global_err_loss.item(),
                     "state_change": global_state_change.item(),
-                    "accuracy": n_correct_epoch / n_samples_epoch
+                    "mean_accuracy": overall_acc,
+                    "last_accuracy": last_acc
                 })
             
             err_loss_epoch /= n_batches
@@ -425,8 +430,8 @@ class MultiModN(nn.Module):
 
 
             if history:
-                history.state_change_loss.append(state_change_epoch)
-                history.loss['train'].append(err_loss_epoch)
+                history.state_change_loss.append(state_change_epoch.cpu().numpy())
+                history.loss['train'].append(err_loss_epoch.cpu().numpy())
                 history.accuracy['train'].append(accuracy_epoch)
             
             if last_epoch:

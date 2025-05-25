@@ -2,7 +2,7 @@ data/
 pipelines/*/results
 pipelines/*/api_keys
 *.csv
-
+logs
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
