@@ -92,13 +92,12 @@ class MMHS150K:
 
         self.load_img_text = lambda row_id: load_img_text(row_id, self.image_text_path)
         self.df['img_text'] = self.df['id'].apply(self.load_img_text)
-
         if rebalance:
             # 1. Separate by label
-            df_0 = self.df[self.df['label'] == 0]
-            df_1 = self.df[self.df['label'] == 1]
-            df_2 = self.df[self.df['label'] == 2]
-            df_3 = self.df[self.df['label'] == 3]
+            df_0 = self.df[self.df['label'] == '0']
+            df_1 = self.df[self.df['label'] == '1']
+            df_2 = self.df[self.df['label'] == '2']
+            df_3 = self.df[self.df['label'] == '3']
 
             # 2. Remove half of label 0 and label 1 randomly
             df_0_down = df_0.sample(frac=0.5, random_state=42).reset_index(drop=True)
@@ -112,7 +111,7 @@ class MMHS150K:
 
             # 5. Shuffle the combined DataFrame
             self.df = df_new.sample(frac=1, random_state=42).reset_index(drop=True)
-
+        
         self.data_length = len(self.df)
 
     def __len__(self):
