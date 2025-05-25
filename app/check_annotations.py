@@ -61,18 +61,37 @@ def main(args):
 
     accuracy = 0
     mae = 0
+    rmse = 0
+    tp, tn, fp, fn = 0, 0, 0, 0
+    f1_confusion_mat = np.zeros((2, 2))
     for line in tqdm.tqdm(file_generator(args.annotation_path), total=num_annotations):
         id = line['id']
         label = line['response']['input_labels']
         ground_truth_label = ground_truth_df[ground_truth_df['id'] == id]['label'].values[0]
+        gt_hate_label = ground_truth_label >= 2
+        label_hate_label = label >= 2
         # Ground truth labels are going down the rows and annotated labels are going across the columns
         accuracy += int(ground_truth_label == label)
         mae += abs(ground_truth_label - label)
+        rmse += (ground_truth_label - label) ** 2
+
+        if ground_truth_label == 0 and label == 0:
+            f1_confusion_mat[0, 0] += 1
+        elif ground_truth_label == 0 and label == 1:
+            f1_confusion_mat[0, 1] += 1
+        elif ground_truth_label == 1 and label == 0:
+            f1_confusion_mat[1, 0] += 1
+        elif ground_truth_label == 1 and label == 1:
+            f1_confusion_mat[1, 1] += 1
 
         confusion_matrix[ground_truth_label][label] += 1
 
+    f1_confusion_mat /= num_annotations
+    
+
     accuracy /= num_annotations
     mae /= num_annotations
+    rmse = np.sqrt(rmse / num_annotations)
     normalized_confusion_matrix = confusion_matrix / num_annotations
     relative_confusion_matrix = normalized_confusion_matrix / np.sum(normalized_confusion_matrix, axis=1, keepdims=True)
 
@@ -86,6 +105,10 @@ def main(args):
     print(f"Relative Confusion Matrix:\n{relative_confusion_matrix}")
     print(f"Accuracy (HateScore): {accuracy}")
     print(f"MAE (HateScore): {mae}")
+    print(f"RMSE (HateScore): {rmse}")
+    print(f"Precision: {f1_confusion_mat[1, 1] / (f1_confusion_mat[1, 1] + f1_confusion_mat[0, 1])}")
+    print(f"Recall: {f1_confusion_mat[1, 1] / (f1_confusion_mat[1, 1] + f1_confusion_mat[1, 0])}")
+    print(f"F1 Score: {f1_confusion_mat[1, 1] / (f1_confusion_mat[1, 1] + 0.5*(f1_confusion_mat[0, 1] + f1_confusion_mat[1, 0]))}")
     print(f"Observed Agreement: {observed_agreement}")
     print(f"Expected Agreement: {expected_agreement}")
     print(f"Cohen's Kappa: {(observed_agreement - expected_agreement) / (1-expected_agreement)}")

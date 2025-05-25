@@ -1,26 +1,87 @@
 """
 This file is mainly to help plot the graphs. It is not intended to be reused as-is. Just a hacky script to get something
-plotted for the poster + report
+plotted for the poster + report 
 """
 
-import plotly.express as px
-import plotly.graph_objects as go
+import json
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import argparse
+from tqdm import tqdm
 
 
-mat = np.array([[0.12544234, 0.04886848, 0.29476446, 0.53092472],
-          [0.09618921, 0.04677458, 0.27525809, 0.58177813],
-          [0.0673358 , 0.0375066 , 0.23014615, 0.66501145],
-          [0.04408677, 0.02682529, 0.17133193, 0.75775601]])
+def label_agg(row):
+    res = 0
+    for x in row:
+        if x != 0:
+            res+= 1
+    return res
 
-fig = px.imshow(
-    mat,
-    x=["0", "1", "2", "3"], y=["0", "1", "2", "3"],
-    labels=dict(x="LLM", y="Human", color="P(Human|LLM)"),
-    color_continuous_scale="viridis",  # ← swap here
-    text_auto=".2f",
-    zmin=0, zmax=1,
-)
+Allowed_labels = ["NotHate", "Racist", "Sexist", "Homophobe", "Religion", "OtherHate"]
 
-fig.show()
+r1r2 = np.zeros((6, 6))
+r1r3 = np.zeros((6, 6))
+r2r3 = np.zeros((6, 6))
 
+def main(args):
+    # Load ground truth
+
+    ground_truth_df = pd.read_json(args.dataset_json_path, lines=False, orient='index', convert_dates=False)
+    ground_truth_df['label'] = ground_truth_df['labels'].apply(label_agg) # Assumes 'labels' column contains lists
+    ground_truth_df['id'] = ground_truth_df['tweet_url'].str.extract(r'/status/(\d+)')
+    counts = len(ground_truth_df)    
+
+    wrong_count = 0
+    for idx, row in tqdm(ground_truth_df.iterrows(), total=counts):
+        labels = row['labels']
+        if len(labels) < 3:
+            for _ in range(3 - len(labels)):
+                labels.append(labels[-1])
+        
+        labels = labels[:3]    
+        r1r2[labels[0]][labels[1]] += 1
+        r1r3[labels[0]][labels[2]] += 1
+        r2r3[labels[1]][labels[2]] += 1
+
+    normalized_r1r2 = r1r2 / counts
+    normalized_r1r3 = r1r3 / counts
+    normalized_r2r3 = r2r3 / counts
+
+    relative_r1r2 = normalized_r1r2 / np.sum(normalized_r1r2, axis=0, keepdims=True)
+    relative_r1r3 = normalized_r1r3 / np.sum(normalized_r1r3, axis=0, keepdims=True)
+    relative_r2r3 = normalized_r2r3 / np.sum(normalized_r2r3, axis=0, keepdims=True)
+
+    plt.figure(figsize=(6, 4))
+    sns.heatmap(relative_r1r2, annot=True, xticklabels=Allowed_labels, yticklabels=Allowed_labels, cmap="flare", cbar=True, fmt=".2f")
+    plt.title("Conditional Agreement between Researcher 1 and 2 (P(R2 | R1))")
+    plt.xlabel("Researcher 2")
+    plt.ylabel("Researcher 1")
+    plt.tight_layout()
+    plt.savefig("r1r2.png")
+    plt.show()
+
+    sns.heatmap(relative_r1r3, annot=True, xticklabels=Allowed_labels, yticklabels=Allowed_labels, cmap="flare", cbar=True, fmt=".2f")
+    plt.title("Conditional Agreement between Researcher 1 and 3 (P(R3 | R1))")
+    plt.xlabel("Researcher 3")
+    plt.ylabel("Researcher 1")
+    plt.tight_layout()
+    plt.savefig("r1r3.png")
+    plt.show()
+
+
+    sns.heatmap(relative_r2r3, annot=True, xticklabels=Allowed_labels, yticklabels=Allowed_labels, cmap="flare", cbar=True, fmt=".2f")
+    plt.title("Conditional Agreement between Researcher 2 and 3 (P(R3 | R2))")
+    plt.xlabel("Researcher 3")
+    plt.ylabel("Researcher 2")
+    plt.tight_layout()
+    plt.savefig("r2r3.png")
+    plt.show()
+
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset-json-path", type=str, required=True, help="Path to the dataset json file")
+    main(parser.parse_args())
