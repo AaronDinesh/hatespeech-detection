@@ -74,7 +74,7 @@ def load_img_text(row_id, json_folder):
 
 
 class MMHS150K:
-    def __init__(self, image_path: str, image_text_path: str, dataset_json_path: str, data_split_ids_path: str):
+    def __init__(self, image_path: str, image_text_path: str, dataset_json_path: str, data_split_ids_path: str, rebalance=False):
         self.image_path = image_path
         self.image_text_path = image_text_path
         self.dataset_json_path = dataset_json_path
@@ -92,7 +92,27 @@ class MMHS150K:
 
         self.load_img_text = lambda row_id: load_img_text(row_id, self.image_text_path)
         self.df['img_text'] = self.df['id'].apply(self.load_img_text)
-        
+
+        if rebalance:
+            # 1. Separate by label
+            df_0 = self.df[self.df['label'] == 0]
+            df_1 = self.df[self.df['label'] == 1]
+            df_2 = self.df[self.df['label'] == 2]
+            df_3 = self.df[self.df['label'] == 3]
+
+            # 2. Remove half of label 0 and label 1 randomly
+            df_0_down = df_0.sample(frac=0.5, random_state=42).reset_index(drop=True)
+            df_1_down = df_1.sample(frac=0.5, random_state=42).reset_index(drop=True)
+
+            # 3. Double the label 3 rows
+            df_3_doubled = pd.concat([df_3, df_3], ignore_index=True)
+
+            # 4. Combine the new DataFrame
+            df_new = pd.concat([df_0_down, df_1_down, df_2, df_3_doubled], ignore_index=True)
+
+            # 5. Shuffle the combined DataFrame
+            self.df = df_new.sample(frac=1, random_state=42).reset_index(drop=True)
+
         self.data_length = len(self.df)
 
     def __len__(self):
@@ -400,7 +420,7 @@ def main(args):
     bytes_for_weights = total_params * bits_per_param / 8
     print(f"≈{bytes_for_weights/1024**3:.2f} GB for raw weights")
 
-    train_ds = MMHS150K(image_path, image_text_path, dataset_json_path, f"{splits_path}/train_ids.txt")
+    train_ds = MMHS150K(image_path, image_text_path, dataset_json_path, f"{splits_path}/train_ids.txt", rebalance=True)
     val_ds = MMHS150K(image_path, image_text_path, dataset_json_path, f"{splits_path}/val_ids.txt")
     test_ds = MMHS150K(image_path, image_text_path, dataset_json_path, f"{splits_path}/test_ids.txt")
 

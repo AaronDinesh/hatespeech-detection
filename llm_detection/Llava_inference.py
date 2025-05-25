@@ -112,19 +112,19 @@ def eval_collate_fn(inputs, processor):
 
     batch = processor(text=prompts, images=images, return_tensors="pt", padding=True)
 
-    input_ids = batch["input_ids"]
-    attention_mask = batch["attention_mask"]
-    pixel_values = batch["pixel_values"]
-    image_sizes = batch["image_sizes"]
+    # input_ids = batch["input_ids"]
+    # attention_mask = batch["attention_mask"]
+    # pixel_values = batch["pixel_values"]
+    # image_sizes = batch["image_sizes"]
 
 
-    return input_ids, attention_mask, pixel_values, image_sizes, answers, twitter_ids
+    return batch, answers, twitter_ids,
 
 
 
 def main(args):
 
-    processor = AutoProcessor.from_pretrained(args.adapter_path)
+    processor = AutoProcessor.from_pretrained(args.base_model_path)
     processor.tokenizer.padding_side = "right"
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -161,23 +161,18 @@ def main(args):
     total, correct, total_mae = 0, 0, 0
     results = []
     with torch.no_grad():
-        for input_ids, attention_mask, pixel_values, image_sizes, answers, twitter_ids in tqdm(test_loader, desc="Testing", total=len(test_loader)):
-            input_ids = input_ids.to(device)
-            attention_mask = attention_mask.to(device)
-            pixel_values = pixel_values.to(device)
+        for batch, answers, twitter_ids, in tqdm(test_loader, desc="Testing", total=len(test_loader)):
+            batch = {k: v.to(device) for k, v in batch.items()}
 
             # generate hate‐score predictions
             gen_ids = model.generate(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                pixel_values=pixel_values,
-                image_sizes=image_sizes,
+                **batch,
                 max_new_tokens=5
             )
 
             # decode only the newly generated tokens
             preds = processor.batch_decode(
-                gen_ids[:, input_ids.size(1):],
+                gen_ids[:, batch["input_ids"].size(1):],
                 skip_special_tokens=True
             )
             
@@ -190,7 +185,7 @@ def main(args):
                 acc = 1 if pred_num == ans_num else 0
                 mae = abs(pred_num - ans_num) if pred_num is not None else 3
                 
-                with gzip.open(args.output_path, 'a', encoding='utf-8') as f:
+                with gzip.open(args.llm_output, 'at', encoding='utf-8') as f:
                     # {'id': '1114558534635618305', 'response': {'input_labels': 3}} <--- Example output
                     f.write(json.dumps({"id": twitter_ids[idx], "response": {"input_labels": pred_num}}) + "\n")
 
@@ -211,7 +206,7 @@ def main(args):
     print(f"Accuracy: {test_acc:.4f}")
     print(f"MAE     : {test_mae:.4f}")
 
-    with open(args.output_results, "w") as f:
+    with open(args.output_metrics, "w") as f:
         json.dump({
             "overall": {"accuracy": test_acc, "mae": test_mae},
             "samples": results
