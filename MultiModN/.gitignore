@@ -1,5 +1,6 @@
 data/
 pipelines/*/results
+pipelines/*/api_keys
 *.csv
 
 # Byte-compiled / optimized / DLL files

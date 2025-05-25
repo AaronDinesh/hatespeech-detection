@@ -23,11 +23,22 @@ import pickle as pkl
 import glob
 import re
 from pathlib import Path
+import wandb
+# from dotenv import load_dotenv
+import pandas as pd
     
 def main():
     PIPELINE_NAME = utils.extract_pipeline_name(sys.argv[0])
     print('Running ̣{}...'.format(utils.get_display_name(PIPELINE_NAME)))
     args = utils.parse_args()
+    # load_dotenv(args.env_path)
+    # 1) Point to your file (for example, ~/.config/wandb_api_key.txt)
+    key_file = "./api_keys/api_key.txt"
+
+    # 2) Read and strip any whitespace/newlines
+    api_key = key_file.read_text().strip()
+    os.environ["WANDB_API_KEY"] = api_key
+    wandb_logger = wandb.init(project="multimodn", name="multimodn-run")
 
     torch.manual_seed(args.seed)
 
@@ -44,10 +55,10 @@ def main():
     # Representation state size
     state_size = 512
 
-    learning_rate = 0.01
+    learning_rate = 0.1
     epochs = 5 if not args.epoch else args.epoch
 
-    ckpt_dir          = "./checkpoint"
+    ckpt_dir          = "./checkpoint2"
     ckpt_every_iter   = 5                # iterations, not epochs
     os.makedirs(ckpt_dir, exist_ok=True)
 
@@ -57,7 +68,7 @@ def main():
     ###### Create dataset and data loaders
     ##############################################################################
     path_to_mmhs = '../../../MMHS150K/'
-    pickle_path = os.path.join(path_to_mmhs, "df.pkl")
+    pickle_path = os.path.join(path_to_mmhs, "rebalanced_df.pkl")
 
     if os.path.exists(pickle_path):
         dataset = pd.read_pickle(pickle_path)
@@ -70,7 +81,7 @@ def main():
     print('Split data')
     train_dataset = MMHSDataset(train_data, root_dir=path_to_mmhs)
     val_dataset = MMHSDataset(val_data, root_dir=path_to_mmhs)
-    test_dataset = MMHSDataset(test_data, root_dir=path_to_mmhs)
+    # test_dataset = MMHSDataset(test_data, root_dir=path_to_mmhs)
     # breakpoint()
     #datasplit = (0.8, 0.2, 0)
     #target_idx_to_balance = 0 # Balance 'Survived' during split
@@ -79,14 +90,14 @@ def main():
     if batch_size == 0:
         batch_size_train = len(train_data)
         batch_size_val = len(val_data)
-        batch_size_test = len(test_data)
+        # batch_size_test = len(test_data)
     else:
         batch_size_train = batch_size
         batch_size_val = batch_size
-        batch_size_test = batch_size
+        # batch_size_test = batch_size
 
-    train_loader = DataLoader(train_dataset, batch_size_train, num_workers=4)
-    val_loader = DataLoader(val_dataset, batch_size_val, num_workers=4)
+    train_loader = DataLoader(train_dataset, batch_size_train, num_workers=8)
+    val_loader = DataLoader(val_dataset, batch_size_val, num_workers=8)
     #test_loader = DataLoader(test_dataset, batch_size=batch_size_test)
     print('Loaded DataLoaders')
 
@@ -99,16 +110,16 @@ def main():
     
     encoders = [image_encoder, text_encoder, tweet_encoder]
     n_labels = 4            # 0,1,2,3
-    decoders = [ClassDecoder(state_size, n_labels, activation=torch.nn.Softmax(dim=1))]
+    decoders = [ClassDecoder(state_size, n_labels, activation=lambda x: x)]
 
     model = MultiModN(state_size, encoders, decoders, 0.7, 0.3, device = device)
     print('loaded Encoders and Decoders')
     optimizer = torch.optim.Adam(list(model.parameters()), learning_rate)
 
-    warmup_iters = 10
+    warmup_iters = 5
     scheduler = LinearLR(
         optimizer,
-        start_factor=0.1,          # begin at 10 % of base LR
+        start_factor=1,          # begin at 10 % of base LR
         end_factor=0.1,
         total_iters=epochs - warmup_iters
     )
@@ -161,7 +172,7 @@ def main():
     ###### Train and Test model
     ##############################################################################
     for _ in trange(epochs):
-        model.train_epoch(
+        model.train_epoch_mmhs(
             train_loader,
             optimizer,
             criterion,

@@ -317,6 +317,7 @@ class MultiModN(nn.Module):
         last_epoch: Optional[bool] = False,
         checkpoint_dir: Optional[str] = None,
         checkpoint_every: int = 5,
+        wandb_logger = None
     ):
         # If log interval is given and logger is not, use print as default logger
         if log_interval and not logger:
@@ -410,6 +411,13 @@ class MultiModN(nn.Module):
                     f"\tErr loss: {global_err_loss.item():.4f}\n"
                     f"\tState change: {global_state_change.item():.4f}"
                 )
+
+                wandb_logger.log({
+                    "loss": loss.item(),
+                    "err_loss": global_err_loss.item(),
+                    "state_change": global_state_change.item(),
+                    "accuracy": n_correct_epoch / n_samples_epoch
+                })
             
             err_loss_epoch /= n_batches
             state_change_epoch /= n_batches
@@ -589,7 +597,11 @@ class MultiModN(nn.Module):
             target_decoder_epoch_dec_idx = target_decoder_epoch[:, dec_idx]     
             # results[dec_idx] = get_performance_metrics(target_decoder_epoch_dec_idx, prediction_epoch_dec_idx, output_decoder_epoch_dec_i dx[:,1])
             results[dec_idx] = get_performance_metrics(target_decoder_epoch_dec_idx, prediction_epoch_dec_idx)
-        return results     
+        # also return the raw predictions from the last encoder & last decoder
+        # shape: [n_samples]
+        final_probs = output_decoder_epoch[-1]            # Tensor [n_samples, n_classes]
+        _, final_preds = torch.max(final_probs, dim=1)   # Tensor [n_samples]
+        return results, final_preds.cpu().numpy()   
 
 
     def predict(
