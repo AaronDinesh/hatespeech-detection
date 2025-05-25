@@ -428,7 +428,7 @@ def main(args):
     wandb.login(key=WANDB_API_KEY)
     wandb_logger = WandbLogger(project=PROJECT, name=RUN_NAME)
 
-    config = {"max_epochs": 3,
+    config = {"max_epochs": 5,
             "val_check_interval": 0.1, # how many times we want to validate during an epoch
             "check_val_every_n_epoch": 1,
             "gradient_clip_val": 1.0,
@@ -454,12 +454,13 @@ def main(args):
     
     checkpoint_callback = ModelCheckpoint(
         dirpath=args.checkpoint_save_path,
-        filename='epoch{epoch:02d}-step{step}',
-        save_top_k=-1,
-        every_n_train_steps=checkpoint_interval,
-        save_on_train_epoch_end=False
+        filename='epoch{epoch:02d}-mae{val_mae:.4f}',
+        save_top_k=10,
+        save_on_train_epoch_end=True,
+        monitor="val_mae",
+        mode="min",
+        save_last=True
     )
-
 
     trainer = L.Trainer(
         accelerator="gpu",
@@ -468,7 +469,6 @@ def main(args):
         accumulate_grad_batches=config.get("accumulate_grad_batches"),
         check_val_every_n_epoch=config.get("check_val_every_n_epoch"),
         gradient_clip_val=config.get("gradient_clip_val"),
-        val_check_interval=config.get("val_check_interval"),
         callbacks=[checkpoint_callback],
         precision="bf16-mixed",
         limit_val_batches=5,
