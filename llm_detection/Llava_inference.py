@@ -141,6 +141,20 @@ def main(args):
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = PeftModel.from_pretrained(base_model, args.adapter_path, torch_dtype=torch.float16)
+    
+    
+    if args.checkpoint_file:
+        ckpt = torch.load(args.ckpt_path, map_location="cpu")
+        # Lightning prefixes everything with "model."
+        state = {
+            k.replace("model.", ""): v 
+            for k, v in ckpt["state_dict"].items() 
+            if k.startswith("model.")
+        }
+        model.load_state_dict(state, strict=False)
+        print(f"Loaded LoRA weights from checkpoint {args.ckpt_path}")
+    
+    
     model.eval().to(device)
     test_ds = MMHS150K(
         image_path=args.image_path,
@@ -227,4 +241,5 @@ if __name__ == "__main__":
     parser.add_argument("--adapter-path", type=str, required=True, help="Directory where you saved LoRA adapters + processor")
     parser.add_argument("--output-metrics", type=str, required=True, help="File to write metrics")
     parser.add_argument("--llm-output", type=str, required=True, help="Path to the output .jsonl.gz file")
+    parser.add_argument("--checkpoint-file", type=str, default=None, required=False, help="Path to the checkpoint file to resume from")
     main(parser.parse_args())
