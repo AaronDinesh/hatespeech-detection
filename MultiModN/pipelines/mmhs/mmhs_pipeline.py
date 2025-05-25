@@ -35,7 +35,8 @@ def main():
     # load_dotenv(args.env_path)
     # 1) Point to your file (for example, ~/.config/wandb_api_key.txt)
     key_file = Path("./api_keys/api_key.txt")
-
+    SHARED_DRIVE = "/mnt/course-ee-559/scratch/models/student_models/"
+    jb_id = 3
     # 2) Read and strip any whitespace/newlines
     api_key = key_file.read_text().strip()
     os.environ["WANDB_API_KEY"] = api_key
@@ -52,15 +53,19 @@ def main():
 
     # Batch size: set 0 for full batch
     batch_size = 2048
+    print('batch_size: ', batch_size)
 
     # Representation state size
     state_size = 512
+    print('state_size: ', state_size)
 
-    learning_rate = 0.001
-    epochs = 50 if not args.epoch else args.epoch
+    learning_rate = 0.01
+    print('learning_rate: ', learning_rate)
+    epochs = 100 if not args.epoch else args.epoch
+    print('epochs: ', epochs)
 
-    ckpt_dir          = "./checkpoint2"
-    ckpt_every_iter   = 40                # iterations, not epochs
+    ckpt_dir          = SHARED_DRIVE + f"checkpoint{jb_id}"
+    # ckpt_every_iter   = 40                # iterations, not epochs
     os.makedirs(ckpt_dir, exist_ok=True)
 
     global_step = 0                       # will count mini-batches
@@ -154,8 +159,8 @@ def main():
         # restore weights / optimiser / scheduler
         model.load_state_dict(payload["model"])
         optimizer.load_state_dict(payload["optim"])
-        # if "sched" in payload and scheduler is not None:
-        #     scheduler.load_state_dict(payload["sched"])
+        if "sched" in payload and scheduler is not None:
+            scheduler.load_state_dict(payload["sched"])
 
         # restore the running iteration counter used by train_epoch()
         model._global_step = payload.get("step", 0)
@@ -186,10 +191,24 @@ def main():
             metrics, val_preds = model.test_mmhs(val_loader, criterion, history,wandb_logger=wandb_logger, tag='val')
             val_df_epoch = val_data.reset_index(drop=True).copy()
             val_df_epoch['predicted_label'] = val_preds
-            os.makedirs('results', exist_ok=True)
-            csv_name = f"results/val_preds_epoch{epoch:02d}.csv"
+            os.makedirs(f'results{jb_id}', exist_ok=True)
+            csv_name = f"results{jb_id}/val_preds_epoch{epoch:02d}.csv"
             val_df_epoch.to_csv(csv_name, index=False)
             print(f"Saved validation predictions → {csv_name}")
+            wandb_logger.log(metrics)
+            os.makedirs(ckpt_dir, exist_ok=True)
+            ckpt_path = os.path.join(
+                ckpt_dir, f"step_{epoch}.pt"
+            )
+            torch.save(
+                {
+                    "step":  model._global_step,
+                    "model": model.state_dict(),
+                    "optim": optimizer.state_dict(),
+                    "sched": scheduler.state_dict()
+                },
+                ckpt_path,
+            )
         scheduler.step()
 
     ##############################################################################

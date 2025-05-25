@@ -533,9 +533,9 @@ class MultiModN(nn.Module):
 
         # return the summary metrics if you want
         return {
-            "err_loss":     err_loss_epoch.mean().item(),
-            "accuracy":     accuracy_epoch.mean().item(),
-            "state_change": state_change_epoch.mean().item(),
+            "val_err_loss":     err_loss_epoch.mean().item(),
+            "val_accuracy":     accuracy_epoch.mean().item(),
+            "val_state_change": state_change_epoch.mean().item(),
         }, preds_array
 
     def test(
