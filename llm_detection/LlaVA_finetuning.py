@@ -21,6 +21,7 @@ import re
 from functools import partial
 from lightning.pytorch.callbacks import ModelCheckpoint
 import math
+from typing import Dict, Any
 
 MAX_LENGTH = 3000
 
@@ -256,6 +257,28 @@ class LlavaModelPLModule(L.LightningModule):
 
         self.batch_size = config.get("batch_size")
 
+
+    
+    def on_load_checkpoint(self, checkpoint: Dict[str,Any]) -> None:
+        """
+        Lightning is about to call load_state_dict(checkpoint['state_dict'], strict=True).
+        We filter out any of the BitsAndBytes quantization keys so that only the real
+        model + LoRA weights remain.
+        """
+        state = checkpoint["state_dict"]
+        filtered = {
+            k: v
+            for k, v in state.items()
+            # drop any param that belongs to bitsandbytes quant state / absmax / quant_map
+            if not (
+                "quant_state"   in k or
+                "absmax"        in k or
+                "quant_map"     in k or
+                "nested"        in k
+            )
+        }
+        checkpoint["state_dict"] = filtered
+
     def training_step(self, batch, batch_idx):
         """
         Performs a single step of training.
@@ -306,6 +329,7 @@ class LlavaModelPLModule(L.LightningModule):
         
         accs = []
         maes = []
+        rmse = []
         for pred, ans in zip(predictions, answers):
             pred = pred.strip()
             ans = ans.strip()
@@ -315,17 +339,19 @@ class LlavaModelPLModule(L.LightningModule):
             if number is not None:
                 accs.append(1 if number == ans else 0)
                 maes.append(abs(number - ans))
+                rmse.append((number - ans)**2)
             else:
                 accs.append(0)
                 maes.append(3)
+                rmse.append(9)
         batch_acc = sum(accs) / len(accs)
         batch_mae = sum(maes) / len(maes)
+        batch_rmse = math.sqrt(sum(rmse) / len(rmse))
 
-        batch_acc = sum(accs) / len(accs)
-        batch_mae = sum(maes) / len(maes)
         self.log('val_acc', batch_acc, sync_dist=True)
         self.log('val_mae', batch_mae, sync_dist=True)
-        return {'val_acc': batch_acc, 'val_mae': batch_mae}
+        self.log('val_rmse', batch_rmse, sync_dist=True)
+        return {'val_acc': batch_acc, 'val_mae': batch_mae, 'val_rmse': batch_rmse}
             
     def configure_optimizers(self):
         """
@@ -371,7 +397,7 @@ def main(args):
     model_save_path = args.model_save_path
     checkpoint_save_path = args.checkpoint_save_path
     PROJECT = "mmhs-finetune"
-    RUN_NAME = "llava-lora"
+    RUN_NAME = "llava-lora-Run1"
 
 
     if torch.cuda.is_available():
@@ -427,8 +453,8 @@ def main(args):
     wandb.login(key=WANDB_API_KEY)
     wandb_logger = WandbLogger(project=PROJECT, name=RUN_NAME)
 
-    config = {"max_epochs": 5,
-            "val_check_interval": 0.1, # how many times we want to validate during an epoch
+    config = {"max_epochs": 10,
+            "val_check_interval": 0.25, # how many times we want to validate during an epoch
             "check_val_every_n_epoch": 1,
             "gradient_clip_val": 1.0,
             "accumulate_grad_batches": 8,
@@ -445,7 +471,19 @@ def main(args):
     train_collate = partial(train_collate_fn, processor=processor)
     eval_collate = partial(eval_collate_fn, processor=processor)
 
-    model_module = LlavaModelPLModule(config, processor, model, train_ds, val_ds, train_collate, eval_collate)
+
+
+    model_module = LlavaModelPLModule(
+            config       = config,
+            processor    = processor,
+            model        = model,
+            training_dataset     = train_ds,
+            validation_dataset       = val_ds,
+            train_collate_fn= train_collate,
+            val_collate_fn = eval_collate,
+        )
+
+
 
 
     steps_per_epoch = math.ceil(len(train_ds) / config['batch_size'])
@@ -466,7 +504,8 @@ def main(args):
         devices=ngpus,
         max_epochs=config.get("max_epochs"),
         accumulate_grad_batches=config.get("accumulate_grad_batches"),
-        check_val_every_n_epoch=config.get("check_val_every_n_epoch"),
+        val_check_interval=config.get("val_check_interval"),
+        #check_val_every_n_epoch=config.get("check_val_every_n_epoch"),
         gradient_clip_val=config.get("gradient_clip_val"),
         callbacks=[checkpoint_callback],
         precision="bf16-mixed",
@@ -475,10 +514,17 @@ def main(args):
         logger=wandb_logger,
         strategy=DDPStrategy(find_unused_parameters=True),
         enable_checkpointing=True,
-        default_root_dir=args.checkpoint_save_path
+        default_root_dir=args.checkpoint_save_path,
+
     )
 
-    trainer.fit(model_module)
+    if args.resume_from is not None:
+        print(f"Resuming from checkpoint: {args.resume_from}")
+        trainer.fit(model_module, ckpt_path=args.resume_from)
+    else:
+        print("Training from scratch")
+        trainer.fit(model_module)
+
 
     # Save PEFT model (adapters) and processor only on global rank 0
     if trainer.global_rank == 0: # or trainer.is_global_zero
@@ -502,5 +548,6 @@ if __name__ == "__main__":
     parser.add_argument("--env-file", type=str, required=True, help="Path to the .env file")
     parser.add_argument("--model-save-path", type=str, required=True, help="Path to save the tuned model files")
     parser.add_argument("--checkpoint-save-path", type=str, required=True, help="Path to save the checkpoint files")
+    parser.add_argument("--resume-from", type=str, default=None, required=False, help="Path to the checkpoint file to resume from")
     args = parser.parse_args()
     main(args)
