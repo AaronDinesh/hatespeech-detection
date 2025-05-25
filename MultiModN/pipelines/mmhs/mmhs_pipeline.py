@@ -26,6 +26,7 @@ from pathlib import Path
 import wandb
 # from dotenv import load_dotenv
 import pandas as pd
+import numpy as np
     
 def main():
     PIPELINE_NAME = utils.extract_pipeline_name(sys.argv[0])
@@ -34,11 +35,15 @@ def main():
     # load_dotenv(args.env_path)
     # 1) Point to your file (for example, ~/.config/wandb_api_key.txt)
     key_file = Path("./api_keys/api_key.txt")
+    # SHARED_DRIVE = "/mnt/course-ee-559/scratch/models/student_models/mmn/"
 
+
+    jb_id = 8
+    print(f'Job id: {jb_id}')
     # 2) Read and strip any whitespace/newlines
     api_key = key_file.read_text().strip()
     os.environ["WANDB_API_KEY"] = api_key
-    wandb_logger = wandb.init(project="multimodn", name="multimodn-run")
+    wandb_logger = wandb.init(project="multimodn", name="multimodn-run-MAE-{jb_id}")
 
     torch.manual_seed(args.seed)
 
@@ -50,16 +55,20 @@ def main():
     targets = ['label']
 
     # Batch size: set 0 for full batch
-    batch_size = 1024
+    batch_size = 2048
+    print('batch_size: ', batch_size)
 
     # Representation state size
-    state_size = 512
+    state_size = 256
+    print('state_size: ', state_size)
 
-    learning_rate = 0.1
-    epochs = 3 if not args.epoch else args.epoch
+    learning_rate = 0.001
+    print('learning_rate: ', learning_rate)
+    epochs = 100 if not args.epoch else args.epoch
+    print('epochs: ', epochs)
 
-    ckpt_dir          = "./checkpoint2"
-    ckpt_every_iter   = 5                # iterations, not epochs
+    ckpt_dir          = f"checkpoints/checkpoint{jb_id}"
+    # ckpt_every_iter   = 40                # iterations, not epochs
     os.makedirs(ckpt_dir, exist_ok=True)
 
     global_step = 0                       # will count mini-batches
@@ -112,26 +121,28 @@ def main():
     n_labels = 4            # 0,1,2,3
     decoders = [ClassDecoder(state_size, n_labels, activation=Identity())]
 
-    model = MultiModN(state_size, encoders, decoders, 0.7, 0.3, device = device)
+    sc_pen = 0.2
+    model = MultiModN(state_size, encoders, decoders, 1-sc_pen, sc_pen, device = device)
+    print('State_change_penalty: ', )
     print('loaded Encoders and Decoders')
-    optimizer = torch.optim.Adam(list(model.parameters()), learning_rate)
+    optimizer = torch.optim.Adam(list(model.parameters()), learning_rate, weight_decay=1e-4)
 
-    # warmup_iters = 1
-    # scheduler = LinearLR(
-    #     optimizer,
-    #     start_factor=1,          # begin at 10 % of base LR
-    #     end_factor=0.1,
-    #     total_iters=epochs 
-    # )
-    # warmup = LinearLR(
-    #     optimizer,
-    #     start_factor=0.1,          # ramps 0.1 → 1.0 over warm-up
-    #     end_factor=1.0,
-    #     total_iters=warmup_iters
-    # )
+    warmup_iters = 10
+    scheduler = LinearLR(
+        optimizer,
+        start_factor=1,          # begin at 10 % of base LR
+        end_factor=0.1,
+        total_iters=epochs -warmup_iters
+    )
+    warmup = LinearLR(
+        optimizer,
+        start_factor=0.1,          # ramps 0.1 → 1.0 over warm-up
+        end_factor=1.0,
+        total_iters=warmup_iters
+    )
     # Use SequentialLR to chain them
-    # scheduler = SequentialLR(optimizer, schedulers=[warmup, scheduler],
-                            # milestones=[warmup_iters])
+    scheduler = SequentialLR(optimizer, schedulers=[warmup, scheduler],
+                            milestones=[warmup_iters])
 
     criterion = CrossEntropyLoss()
 
@@ -153,8 +164,8 @@ def main():
         # restore weights / optimiser / scheduler
         model.load_state_dict(payload["model"])
         optimizer.load_state_dict(payload["optim"])
-        # if "sched" in payload and scheduler is not None:
-        #     scheduler.load_state_dict(payload["sched"])
+        if "sched" in payload and scheduler is not None:
+            scheduler.load_state_dict(payload["sched"])
 
         # restore the running iteration counter used by train_epoch()
         model._global_step = payload.get("step", 0)
@@ -170,19 +181,39 @@ def main():
     ##############################################################################
     ###### Train and Test model
     ##############################################################################
-    for _ in trange(epochs):
+    for epoch in trange(epochs):
         model.train_epoch_mmhs(
             train_loader,
             optimizer,
             criterion,
             history,
-            checkpoint_dir=ckpt_dir,
-            checkpoint_every=5,
             log_interval=1,
             wandb_logger=wandb_logger
         )
-        model.test(val_loader, criterion, history, tag='val')
-        # scheduler.step()
+        if epoch % 5 == 0:
+            metrics, val_preds = model.test_mmhs(val_loader, criterion, history,wandb_logger=wandb_logger, tag='val')
+            val_df_epoch = val_data.reset_index(drop=True).copy()
+            val_df_epoch['predicted_label'] = val_preds
+            os.makedirs(f'results/results{jb_id}', exist_ok=True)
+            csv_name = f"results/results{jb_id}/val_preds_epoch{epoch:02d}.csv"
+            val_df_epoch.to_csv(csv_name, index=False)
+            print(f"Saved validation predictions → {csv_name}")
+            wandb_logger.log(metrics)
+        if epoch % 20 == 0:
+            os.makedirs(ckpt_dir, exist_ok=True)
+            ckpt_path = os.path.join(
+                ckpt_dir, f"step_{epoch}.pt"
+            )
+            torch.save(
+                {
+                    "step":  model._global_step,
+                    "model": model.state_dict(),
+                    "optim": optimizer.state_dict(),
+                    "sched": scheduler.state_dict()
+                },
+                ckpt_path,
+            )
+        scheduler.step()
 
     ##############################################################################
     ###### Store model and history

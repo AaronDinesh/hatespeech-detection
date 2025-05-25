@@ -164,11 +164,11 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset-path", type=str, help="Path to the MMHS150K_GT.json file")
-    parser.add_argument("--img-path", type=str, help="Path to the images")
-    parser.add_argument("--img-text-path", type=str, help="Path to the image text file")
+    parser.add_argument("--dataset-path", default = '../MMHS150K/MMHS150K_GT.json', type=str, help="Path to the MMHS150K_GT.json file")
+    parser.add_argument("--img-path", default = '../MMHS150K/img_resized', type=str, help="Path to the images")
+    parser.add_argument("--img-text-path", default = '../MMHS150K/img_txt', type=str, help="Path to the image text file")
     parser.add_argument("--output-path", type=str, help="Path to the output JSONL file")
-    parser.add_argument("--limit", type=int, default=100, help="Number of images to annotate")
+    parser.add_argument("--limit", type=int, default=200, help="Number of images to annotate")
     args = parser.parse_args()
     main(args)
 
