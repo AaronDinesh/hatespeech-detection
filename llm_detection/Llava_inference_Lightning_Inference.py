@@ -364,7 +364,7 @@ def main(args):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     model = PeftModel.from_pretrained(base_model, args.adapter_path, torch_dtype=torch.float16)
-    
+
     config = {"max_epochs": 10,
             "val_check_interval": 0.25, # how many times we want to validate during an epoch
             "check_val_every_n_epoch": 1,
@@ -383,17 +383,18 @@ def main(args):
     train_collate = partial(train_collate_fn, processor=processor)
     eval_collate = partial(eval_collate_fn, processor=processor)
 
-    
+    ckpt = torch.load(args.checkpoint_file, map_location="cpu")
+    saved = ckpt["state_dict"]
     model_module = LlavaModelPLModule.load_from_checkpoint(
         args.checkpoint_file,
         # pass in the same __init__ args you originally used:
         config        = config,
         processor     = processor,
         model         = model,
-        train_ds      = None,           # not needed for inference
-        val_ds        = None,
-        train_collate = None,
-        eval_collate  = None,
+        training_dataset      = None,           # not needed for inference
+        validation_dataset        = None,
+        train_collate_fn = None,
+        val_collate_fn  = None,
     )
     
     print("Loaded weights from checkpoint")
@@ -470,7 +471,7 @@ def main(args):
             "samples": results
         }, f, indent=2)
 
-    print(f"Per-sample results saved to {args.output_results}")
+    print(f"Per-sample results saved to {args.output_metrics}")
 
 
 if __name__ == "__main__":
