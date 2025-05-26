@@ -28,16 +28,16 @@ def main(args):
     payload = torch.load(args.ckpt, map_location=device)
 
     # Setup model architecture
-    state_size = 512
+    state_size = 1024
     image_encoder = resnet_encoder.ResNet(state_size=state_size, freeze=True)
     text_encoder = LSTMTextEncoder(state_size)
     tweet_encoder = LSTMTextEncoder(state_size)
     encoders = [image_encoder, text_encoder, tweet_encoder]
 
     n_labels = 4
-    batch_size = 1024
+    batch_size = 2048
     decoders = [ClassDecoder(state_size, n_labels, activation=torch.nn.Softmax(dim=1))]
-    model = MultiModN(state_size, encoders, decoders, 0.7, 0.3, device=device)
+    model = MultiModN(state_size, encoders, decoders, 0.8, 0.2, device=device)
 
     model.load_state_dict(payload["model"])
     model.to(device)
@@ -55,37 +55,37 @@ def main(args):
         df = preprocessing(path_to_mmhs) 
         df.to_pickle(pickle_path)
 
-    _, _, val_df = data_splitting(df, path_to_mmhs)
-    val_dataset = MMHSDataset(val_df, root_dir=path_to_mmhs)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size)
+    _,test_df, _ = data_splitting(df, path_to_mmhs)
+    test_dataset = MMHSDataset(test_df, root_dir=path_to_mmhs)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size)
 
-    print(f"Loaded validation set with {len(val_dataset)} samples")
+    print(f"Loaded test set with {len(test_dataset)} samples")
 
     # Compute metrics
     criterion = CrossEntropyLoss()
     history = MultiModNHistory(targets=["label"])
-    print("📊 Evaluating model on validation set...")
+    print("📊 Evaluating model on test set...")
     # metrics = model.test(val_loader, criterion, history, tag="val", log_results=True)
-    metrics, preds = model.test(val_loader, criterion, history, tag='val', log_results=True)
-    f1, acc, mae = metrics[0]
+    metrics, preds = model.test_mmhs(test_loader, criterion, history, tag='test')
+    # f1, acc, mae =metrics
     print("✅ Evaluation complete. Final metrics:")
-    print(f"F1 (macro): {f1:.4f}   Acc: {acc:.4f}   MAE: {mae:.4f}")
+    print(metrics)
     # history.print_results()
 
     if args.save_csv:
         results_dir = "results"
         Path(results_dir).mkdir(exist_ok=True)
         # save per-sample predictions
-        df = val_df.reset_index(drop=True).copy()
+        df = test_df.reset_index(drop=True).copy()
         df["pred_label"] = preds
         preds_path = f"{results_dir}/val_predictions_from_{Path(args.ckpt).stem}.csv"
         df.to_csv(preds_path, index=False)
         print(f"Saved per-sample predictions to {preds_path}")
 
-        summary_txt =  f"{results_dir}/val_summary_{Path(args.ckpt).stem}.txt"
-        with open(summary_txt, "w") as out:
-            out.write(f"F1 (macro): {f1:.4f}   Acc: {acc:.4f}   MAE: {mae:.4f}\n")
-        print(f"Saved scalar summary to {summary_txt}")
+        # summary_txt =  f"{results_dir}/val_summary_{Path(args.ckpt).stem}.txt"
+        # with open(summary_txt, "w") as out:
+        #     out.write(metrics)
+        # print(f"Saved scalar summary to {summary_txt}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

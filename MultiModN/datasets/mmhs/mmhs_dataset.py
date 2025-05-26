@@ -100,7 +100,8 @@ def data_splitting(MM_df, data_dir):
     val_ids = load_ids(os.path.join(data_dir, 'splits/val_ids.txt'))
 
     # Filter the DataFrame
-    train_df =  rebalance_dataset(MM_df[ MM_df['id'].isin(train_ids)].copy())
+    train_df =  MM_df[ MM_df['id'].isin(train_ids)].copy()
+    # train_df =  rebalance_dataset(MM_df[ MM_df['id'].isin(train_ids)].copy())
     test_df =  MM_df[ MM_df['id'].isin(test_ids)].copy()
     val_df =  MM_df[ MM_df['id'].isin(val_ids)].copy()
 
