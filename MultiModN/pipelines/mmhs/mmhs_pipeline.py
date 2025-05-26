@@ -38,12 +38,12 @@ def main():
     # SHARED_DRIVE = "/mnt/course-ee-559/scratch/models/student_models/mmn/"
 
 
-    jb_id = 8
+    jb_id = 9
     print(f'Job id: {jb_id}')
     # 2) Read and strip any whitespace/newlines
     api_key = key_file.read_text().strip()
     os.environ["WANDB_API_KEY"] = api_key
-    wandb_logger = wandb.init(project="multimodn", name="multimodn-run-MAE-{jb_id}")
+    wandb_logger = wandb.init(project="multimodn", name=f"multimodn-run-unbalanced-{jb_id}")
 
     torch.manual_seed(args.seed)
 
@@ -59,14 +59,15 @@ def main():
     print('batch_size: ', batch_size)
 
     # Representation state size
-    state_size = 256
+    state_size = 1024
     print('state_size: ', state_size)
 
     learning_rate = 0.001
     print('learning_rate: ', learning_rate)
-    epochs = 100 if not args.epoch else args.epoch
+    epochs = 50 if not args.epoch else args.epoch
     print('epochs: ', epochs)
 
+    sc_pen = 0.2
     ckpt_dir          = f"checkpoints/checkpoint{jb_id}"
     # ckpt_every_iter   = 40                # iterations, not epochs
     os.makedirs(ckpt_dir, exist_ok=True)
@@ -121,9 +122,8 @@ def main():
     n_labels = 4            # 0,1,2,3
     decoders = [ClassDecoder(state_size, n_labels, activation=Identity())]
 
-    sc_pen = 0.2
     model = MultiModN(state_size, encoders, decoders, 1-sc_pen, sc_pen, device = device)
-    print('State_change_penalty: ', )
+    print('State_change_penalty: ', sc_pen)
     print('loaded Encoders and Decoders')
     optimizer = torch.optim.Adam(list(model.parameters()), learning_rate, weight_decay=1e-4)
 

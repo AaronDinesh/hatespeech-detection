@@ -463,7 +463,7 @@ class MultiModN(nn.Module):
         # will hold all the batch‐wise final predictions
         all_preds = []
 
-        for batch_idx, batch in enumerate(data_loader):
+        for batch_idx, batch in tqdm(enumerate(data_loader)):
             # unpack and send to GPU
             (data, target, encoder_seq) = (list(batch) + [None])[:3]
             data   = [d.to(self.device, non_blocking=True) for d in data]
