@@ -49,7 +49,7 @@ def main(args):
 
     confusion_matrix = np.zeros((4, 4))
     with open(f"{args.split}/val_ids.txt", 'r') as f:
-        val_ids = set(line.strip() for line in tqdm(f, desc="Building Val set"))
+        val_ids = set(line.strip() for line in tqdm.tqdm(f, desc="Building Val set"))
     if args.annotation_path.endswith('.gz'):
         file_generator = json_generator_gz
     elif args.annotation_path.endswith('.csv'):
