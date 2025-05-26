@@ -48,8 +48,8 @@ def main(args):
     ground_truth_df['id'] = ground_truth_df['tweet_url'].str.extract(r'/status/(\d+)')
 
     confusion_matrix = np.zeros((4, 4))
-
-
+    with open(f"{args.split}/val_ids.txt", 'r') as f:
+        val_ids = set(line.strip() for line in tqdm(f, desc="Building Val set"))
     if args.annotation_path.endswith('.gz'):
         file_generator = json_generator_gz
     elif args.annotation_path.endswith('.csv'):
@@ -66,6 +66,9 @@ def main(args):
     f1_confusion_mat = np.zeros((2, 2))
     for line in tqdm.tqdm(file_generator(args.annotation_path), total=num_annotations):
         id = line['id']
+        if id not in val_ids:
+            continue
+
         label = line['response']['input_labels']        
         ground_truth_label = ground_truth_df[ground_truth_df['id'] == id]['label'].values[0]
         gt_hate_label = ground_truth_label >= 2
@@ -75,13 +78,13 @@ def main(args):
         mae += abs(ground_truth_label - label)
         rmse += (ground_truth_label - label) ** 2
 
-        if ground_truth_label == 0 and label == 0:
+        if gt_hate_label == 0 and label_hate_label == 0:
             f1_confusion_mat[0, 0] += 1
-        elif ground_truth_label == 0 and label == 1:
+        elif gt_hate_label == 0 and label_hate_label == 1:
             f1_confusion_mat[0, 1] += 1
-        elif ground_truth_label == 1 and label == 0:
+        elif gt_hate_label == 1 and label_hate_label == 0:
             f1_confusion_mat[1, 0] += 1
-        elif ground_truth_label == 1 and label == 1:
+        elif gt_hate_label == 1 and label_hate_label == 1:
             f1_confusion_mat[1, 1] += 1
 
         confusion_matrix[ground_truth_label][label] += 1
@@ -131,5 +134,6 @@ if __name__ == "__main__":
     parser.add_argument("--dataset-path", type=str, help="Path to the MMHS150K_GT.json file")
     parser.add_argument("--annotation-path", type=str, help="Path to the output JSONL file")
     parser.add_argument("--graph-name", type=str, help="Name of the graph")
+    parser.add_argument("--split", type=str)
     args = parser.parse_args()
     main(args)
