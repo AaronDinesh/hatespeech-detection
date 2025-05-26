@@ -21,8 +21,8 @@ def json_generator_gz(filepath: str):
     with gzip.open(filepath, 'rt', encoding='utf-8') as f:
         for line in f:
             try:
-                data =  json.loads(line) 
-                yield {"id": str(data["id"]), "response": {"input_labels": int(data["label"])}}
+                data =  json.loads(line)
+                yield data
             except Exception as e:
                 print(f"JSON decode error: {e}")
                 raise StopIteration
@@ -66,7 +66,7 @@ def main(args):
     f1_confusion_mat = np.zeros((2, 2))
     for line in tqdm.tqdm(file_generator(args.annotation_path), total=num_annotations):
         id = line['id']
-        label = line['response']['input_labels']
+        label = line['response']['input_labels']        
         ground_truth_label = ground_truth_df[ground_truth_df['id'] == id]['label'].values[0]
         gt_hate_label = ground_truth_label >= 2
         label_hate_label = label >= 2
@@ -102,10 +102,11 @@ def main(args):
 
     print(f"Confusion Matrix:\n{confusion_matrix}")
     print(f"Normalized Confusion Matrix:\n{normalized_confusion_matrix}")
-    print(f"Relative Confusion Matrix:\n{relative_confusion_matrix}")
+    print(f"Conditional Confusion Matrix:\n{relative_confusion_matrix}")
     print(f"Accuracy (HateScore): {accuracy}")
     print(f"MAE (HateScore): {mae}")
     print(f"RMSE (HateScore): {rmse}")
+    print(f"Soft Accuracy: {np.trace(f1_confusion_mat)}")
     print(f"Precision: {f1_confusion_mat[1, 1] / (f1_confusion_mat[1, 1] + f1_confusion_mat[0, 1])}")
     print(f"Recall: {f1_confusion_mat[1, 1] / (f1_confusion_mat[1, 1] + f1_confusion_mat[1, 0])}")
     print(f"F1 Score: {f1_confusion_mat[1, 1] / (f1_confusion_mat[1, 1] + 0.5*(f1_confusion_mat[0, 1] + f1_confusion_mat[1, 0]))}")
@@ -115,7 +116,7 @@ def main(args):
 
     plt.figure(figsize=(6, 4))
     sns.heatmap(relative_confusion_matrix, cmap='flare', annot=True, fmt=".2f", cbar=True)
-    plt.title("Relative Confusion Matrix")
+    plt.title("Conditional Confusion Matrix (P(MMN | GT))")
     plt.xlabel("Model Prediction")
     plt.ylabel("Ground Truth Label")
     plt.tight_layout()
