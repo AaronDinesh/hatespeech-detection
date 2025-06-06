@@ -21,8 +21,8 @@ def json_generator_gz(filepath: str):
     with gzip.open(filepath, 'rt', encoding='utf-8') as f:
         for line in f:
             try:
-                data =  json.loads(line) 
-                yield {"id": str(data["id"]), "response": {"input_labels": int(data["label"])}}
+                data =  json.loads(line)
+                yield data
             except Exception as e:
                 print(f"JSON decode error: {e}")
                 raise StopIteration
@@ -48,8 +48,8 @@ def main(args):
     ground_truth_df['id'] = ground_truth_df['tweet_url'].str.extract(r'/status/(\d+)')
 
     confusion_matrix = np.zeros((4, 4))
-
-
+    with open(f"{args.split}/val_ids.txt", 'r') as f:
+        val_ids = set(line.strip() for line in tqdm.tqdm(f, desc="Building Val set"))
     if args.annotation_path.endswith('.gz'):
         file_generator = json_generator_gz
     elif args.annotation_path.endswith('.csv'):
@@ -66,7 +66,10 @@ def main(args):
     f1_confusion_mat = np.zeros((2, 2))
     for line in tqdm.tqdm(file_generator(args.annotation_path), total=num_annotations):
         id = line['id']
-        label = line['response']['input_labels']
+        if id not in val_ids:
+            continue
+
+        label = line['response']['input_labels']        
         ground_truth_label = ground_truth_df[ground_truth_df['id'] == id]['label'].values[0]
         gt_hate_label = ground_truth_label >= 2
         label_hate_label = label >= 2
@@ -75,13 +78,13 @@ def main(args):
         mae += abs(ground_truth_label - label)
         rmse += (ground_truth_label - label) ** 2
 
-        if ground_truth_label == 0 and label == 0:
+        if gt_hate_label == 0 and label_hate_label == 0:
             f1_confusion_mat[0, 0] += 1
-        elif ground_truth_label == 0 and label == 1:
+        elif gt_hate_label == 0 and label_hate_label == 1:
             f1_confusion_mat[0, 1] += 1
-        elif ground_truth_label == 1 and label == 0:
+        elif gt_hate_label == 1 and label_hate_label == 0:
             f1_confusion_mat[1, 0] += 1
-        elif ground_truth_label == 1 and label == 1:
+        elif gt_hate_label == 1 and label_hate_label == 1:
             f1_confusion_mat[1, 1] += 1
 
         confusion_matrix[ground_truth_label][label] += 1
@@ -102,10 +105,11 @@ def main(args):
 
     print(f"Confusion Matrix:\n{confusion_matrix}")
     print(f"Normalized Confusion Matrix:\n{normalized_confusion_matrix}")
-    print(f"Relative Confusion Matrix:\n{relative_confusion_matrix}")
+    print(f"Conditional Confusion Matrix:\n{relative_confusion_matrix}")
     print(f"Accuracy (HateScore): {accuracy}")
     print(f"MAE (HateScore): {mae}")
     print(f"RMSE (HateScore): {rmse}")
+    print(f"Soft Accuracy: {np.trace(f1_confusion_mat)}")
     print(f"Precision: {f1_confusion_mat[1, 1] / (f1_confusion_mat[1, 1] + f1_confusion_mat[0, 1])}")
     print(f"Recall: {f1_confusion_mat[1, 1] / (f1_confusion_mat[1, 1] + f1_confusion_mat[1, 0])}")
     print(f"F1 Score: {f1_confusion_mat[1, 1] / (f1_confusion_mat[1, 1] + 0.5*(f1_confusion_mat[0, 1] + f1_confusion_mat[1, 0]))}")
@@ -115,7 +119,7 @@ def main(args):
 
     plt.figure(figsize=(6, 4))
     sns.heatmap(relative_confusion_matrix, cmap='flare', annot=True, fmt=".2f", cbar=True)
-    plt.title("Relative Confusion Matrix")
+    plt.title("Conditional Confusion Matrix (P(MMN | GT))")
     plt.xlabel("Model Prediction")
     plt.ylabel("Ground Truth Label")
     plt.tight_layout()
@@ -130,5 +134,6 @@ if __name__ == "__main__":
     parser.add_argument("--dataset-path", type=str, help="Path to the MMHS150K_GT.json file")
     parser.add_argument("--annotation-path", type=str, help="Path to the output JSONL file")
     parser.add_argument("--graph-name", type=str, help="Name of the graph")
+    parser.add_argument("--split", type=str)
     args = parser.parse_args()
     main(args)
