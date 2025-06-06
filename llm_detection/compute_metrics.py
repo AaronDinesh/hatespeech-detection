@@ -148,9 +148,6 @@ class HatefulMatcher:
             "Cohen's Kappa": 2*(self.results["True-Positive"] * self.results["True-Negative"] - self.results["False-Negative"] * self.results["False-Positive"]) / ((self.results["True-Positive"] + self.results["False-Positive"]) * (self.results["True-Positive"] + self.results["False-Negative"]) * (self.results["False-Negative"] + self.results["True-Negative"]))
         }
     
-    def plot_confusion(self, save_dir: str):
-        raise NotImplementedError
-    
 class HateNotHateMatcher():
     def __init__(self):
         self.results = {
@@ -210,9 +207,6 @@ class HateNotHateMatcher():
             "Cohen's Kappa": 2*(self.results["True-Positive"] * self.results["True-Negative"] - self.results["False-Negative"] * self.results["False-Positive"]) / ((self.results["True-Positive"] + self.results["False-Positive"]) * (self.results["True-Positive"] + self.results["False-Negative"]) * (self.results["False-Negative"] + self.results["True-Negative"]))
         }
     
-    def plot_confusion(self, save_dir: str):
-        raise NotImplementedError
-    
 
 class HatefulScore:
     def __init__(self):
@@ -253,7 +247,6 @@ class HatefulScore:
             "Confusion Matrix Col": "LLM Output"
         }
 
-
 def json_generator(filepath: str):
     with gzip.open(filepath, 'rt', encoding='utf-8') as f:
         for line in f:
@@ -271,7 +264,6 @@ def main(parser: argparse.ArgumentParser):
     llm_output = args.llm_output
     train_test_split = args.train_test_split
     binary_labels = args.binary_labels
-    plot_save_dir = args.plot_save_dir
     text_labels = args.text_labels
     hateful_score = args.hateful_score
     
@@ -324,13 +316,11 @@ def main(parser: argparse.ArgumentParser):
         print(hate_not_hate_matcher.get_results())
         print(hate_not_hate_matcher.get_metrics())
         [print("{}: {}".format(k, v)) for k, v in hate_not_hate_matcher.results.items()]
-        hate_not_hate_matcher.plot_confusion(plot_save_dir)
     elif text_labels:
         print(hateful_matcher.get_results())
         print(hateful_matcher.get_metrics())
         [print("{}: {}".format(k, v)) for k, v in hateful_matcher.results.items()]
         print(label_matcher.get_results())
-        hateful_matcher.plot_confusion(plot_save_dir)
     else:
         print(hateful_score.get_metrics())
 
@@ -339,10 +329,9 @@ if __name__ == "__main__":
     parser.add_argument("--ground-truth", type=str, required=True, help="Path to the MMHS150K_GT.json file")
     parser.add_argument("--llm-output", type=str, required=True, help="Path to the output .jsonl.gz file")
     parser.add_argument("--train-test-split", type=str, help="Path to the train-test-split.csv file")
-    parser.add_argument("--binary-labels", action='store_true', help="Whether the output has binary labels or not")
+    parser.add_argument("--binary-labels", action='store_true', help="Whether the output has binary labels or not (eg HateSpeech vs Not Hate)")
     parser.add_argument("--text-labels", action='store_true', help="Whether the output has text labels or not")
-    parser.add_argument("--hateful-score", action='store_true', help="Whether the output uses hateful score or not")
-    parser.add_argument("--plot-save-dir", type=str, help="Path to save the plots")
+    parser.add_argument("--hateful-score", action='store_true', help="Whether the output uses hateful score or not (0-4)")
     main(parser)
 
 
