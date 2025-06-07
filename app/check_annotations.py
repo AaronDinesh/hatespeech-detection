@@ -120,7 +120,7 @@ def main(args):
 
     plt.figure(figsize=(6, 4))
     sns.heatmap(relative_confusion_matrix, cmap='flare', annot=True, fmt=".2f", cbar=True)
-    plt.title("Conditional Confusion Matrix (P(LSI-17B | GT))")
+    plt.title("Conditional Confusion Matrix (P(LM-7B | GT))")
     plt.xlabel("Model Prediction")
     plt.ylabel("Ground Truth Label")
     plt.tight_layout()
