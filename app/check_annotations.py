@@ -48,8 +48,9 @@ def main(args):
     ground_truth_df['id'] = ground_truth_df['tweet_url'].str.extract(r'/status/(\d+)')
 
     confusion_matrix = np.zeros((4, 4))
-    with open(f"{args.split}/val_ids.txt", 'r') as f:
-        val_ids = set(line.strip() for line in tqdm.tqdm(f, desc="Building Val set"))
+    with open(f"{args.split}/test_ids.txt", 'r') as f:
+        val_ids = set(line.strip() for line in tqdm.tqdm(f, desc="Building test set"))
+   
     if args.annotation_path.endswith('.gz'):
         file_generator = json_generator_gz
     elif args.annotation_path.endswith('.csv'):
@@ -58,12 +59,12 @@ def main(args):
         file_generator = json_generator
 
     num_annotations = sum(1 for _ in file_generator(args.annotation_path))
-
+    num_annotations = max(num_annotations, len(val_ids))
     accuracy = 0
     mae = 0
     rmse = 0
     tp, tn, fp, fn = 0, 0, 0, 0
-    f1_confusion_mat = np.zeros((2, 2))
+    f1_confusion_mat = np.zeros((2, 2)) 
     for line in tqdm.tqdm(file_generator(args.annotation_path), total=num_annotations):
         id = line['id']
         if id not in val_ids:
@@ -119,7 +120,7 @@ def main(args):
 
     plt.figure(figsize=(6, 4))
     sns.heatmap(relative_confusion_matrix, cmap='flare', annot=True, fmt=".2f", cbar=True)
-    plt.title("Conditional Confusion Matrix (P(MMN | GT))")
+    plt.title("Conditional Confusion Matrix (P(LSI-17B | GT))")
     plt.xlabel("Model Prediction")
     plt.ylabel("Ground Truth Label")
     plt.tight_layout()
