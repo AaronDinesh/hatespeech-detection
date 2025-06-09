@@ -1,3 +1,8 @@
+# CHANGES FROM ORIGINAL by EE-559 Group 32
+This repository is adapted from the original MultiModN repository, details found below.
+We added some requirements, a directory to create the necessary docker image to run on the EPFL RCP Cluster, a dataset class for MMHS150K, we added a new training and testing function modified to suit our needs (such as adding mixed precision training), and added an mmhs directory within the pipelines directory with our inference and training files.
+
+
 # MultiModN
 This repository is the official implementation of the NeurIPS 2023 paper titled ["MultiModN- Multimodal, Multi-Task, Interpretable Modular Networks"](https://arxiv.org/abs/2309.14118) written by Vinitra Swamy*, Malika Satayeva*, Jibril Frej, Thierry Bossy, Thijs Vogels, Martin Jaggi, Tanja Käser*, and Mary-Anne Hartley*.
 
