@@ -48,9 +48,14 @@ def main(args):
     ground_truth_df['id'] = ground_truth_df['tweet_url'].str.extract(r'/status/(\d+)')
 
     confusion_matrix = np.zeros((4, 4))
-    with open(f"{args.split}", 'r') as f:
-        val_ids = set(line.strip() for line in tqdm.tqdm(f, desc="Building Val set"))
-    
+
+    if args.split is not None:
+        with open(f"{args.split}", 'r') as f:
+            val_ids = set(line.strip() for line in tqdm.tqdm(f, desc="Building Val set"))
+    else:
+        val_ids = set(ground_truth_df['id'].values)
+
+
     if args.annotation_path.endswith('.gz'):
         file_generator = json_generator_gz
     elif args.annotation_path.endswith('.csv'):
@@ -59,7 +64,7 @@ def main(args):
         file_generator = json_generator
 
     num_annotations = sum(1 for _ in file_generator(args.annotation_path))
-    num_annotations = max(num_annotations, len(val_ids))
+    num_annotations = min(num_annotations, len(val_ids))
     accuracy = 0
     mae = 0
     rmse = 0
@@ -122,9 +127,9 @@ def main(args):
     plt.rcParams.update({
     'text.usetex': True,                 # Use LaTeX for rendering (requires LaTeX installation)
     'font.family': 'serif',
-    'font.size': 12,
-    'axes.titlesize': 14,
-    'axes.labelsize': 12,
+    'font.size': 16,
+    'axes.titlesize': 18,
+    'axes.labelsize': 18,
     'lines.linewidth': 2,
     'lines.markersize': 4,              # Smaller markers
     'figure.dpi': 300,
@@ -134,9 +139,9 @@ def main(args):
 
 
     plt.figure()
-    sns.heatmap(relative_confusion_matrix, cmap='flare', annot=True, fmt=".2f", cbar=True)
-    plt.xlabel("Model Prediction")
-    plt.ylabel("Ground Truth Label")
+    sns.heatmap(relative_confusion_matrix, cmap='flare', annot=True, fmt=".2f", cbar=True, annot_kws={"size": 18})
+    plt.xlabel(r"\textbf{Model Prediction}")
+    plt.ylabel(r"\textbf{Ground Truth Label}")
     plt.tight_layout()
     plt.savefig(f"./plots/{args.graph_name}.pdf", dpi=300)
     plt.show()

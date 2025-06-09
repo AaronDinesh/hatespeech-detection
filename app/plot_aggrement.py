@@ -116,8 +116,8 @@ def main(args):
         'text.usetex': True,                 # Use LaTeX for rendering (requires LaTeX installation)
         'font.family': 'serif',
         'font.size': 14,
-        'axes.titlesize': 16,
-        'axes.labelsize': 14,
+        'axes.titlesize': 18,
+        'axes.labelsize': 18,
         'lines.linewidth': 2,
         'lines.markersize': 4,              # Smaller markers
         'figure.dpi': 300,
@@ -129,50 +129,50 @@ def main(args):
     plt.xlabel("Researcher 2")
     plt.ylabel("Researcher 1")
     plt.tight_layout()
-    plt.savefig("r1r2_cond_aggrement.pdf")
+    plt.savefig("./plots/r1r2_cond_aggrement.pdf")
     
     plt.figure()
     sns.heatmap(relative_r1r3, annot=True, xticklabels=Allowed_labels, yticklabels=Allowed_labels, cmap="flare", cbar=True, fmt=".2f")
     plt.xlabel("Researcher 3")
     plt.ylabel("Researcher 1")
     plt.tight_layout()
-    plt.savefig("r1r3_cond_agreement.pdf")
+    plt.savefig("./plots/r1r3_cond_agreement.pdf")
 
     plt.figure()
     sns.heatmap(relative_r2r3, annot=True, xticklabels=Allowed_labels, yticklabels=Allowed_labels, cmap="flare", cbar=True, fmt=".2f")
     plt.xlabel("Researcher 3")
     plt.ylabel("Researcher 2")
     plt.tight_layout()
-    plt.savefig("r2r3_cond_aggrement.pdf")
+    plt.savefig("./plots/r2r3_cond_aggrement.pdf")
 
     # Use seaborn's theme for styling
     sns.set_theme(style="whitegrid")
 
     # Plot the agreement segment
     plt.figure()
-    plt.bar(['A1-A2', 'A1-A3', 'A2-A3'], [prob_agreement_r1r2, prob_agreement_r1r3, prob_agreement_r2r3], label='Agreement')
+    plt.bar([r'\textbf{A1-A2}', r'\textbf{A1-A3}', r'\textbf{A2-A3}'], [prob_agreement_r1r2, prob_agreement_r1r3, prob_agreement_r2r3], label='Agreement')
     # Plot the disagreement segment stacked on top
-    plt.bar(['A1-A2', 'A1-A3', 'A2-A3'], [1 - prob_agreement_r1r2, 1 - prob_agreement_r1r3, 1 - prob_agreement_r2r3], bottom=[prob_agreement_r1r2, prob_agreement_r1r3, prob_agreement_r2r3], label='Disagreement')
-    plt.ylabel('Proportion')
+    plt.bar([r'\textbf{A1-A2}', r'\textbf{A1-A3}', r'\textbf{A2-A3}'], [1 - prob_agreement_r1r2, 1 - prob_agreement_r1r3, 1 - prob_agreement_r2r3], bottom=[prob_agreement_r1r2, prob_agreement_r1r3, prob_agreement_r2r3], label='Disagreement')
+    plt.ylabel(r'\textbf{Proportion}')
     plt.ylim(0, 1)
     plt.legend()
-    plt.savefig("agreement_disagreement.pdf")
+    plt.savefig("./plots/agreement_disagreement.pdf")
 
     plt.figure()
-    plt.bar(['A1-A2', 'A1-A3', 'A2-A3'], [prob_agreement_r1r2_wout_zero, prob_agreement_r1r3_wout_zero, prob_agreement_r2r3_wout_zero], label='Agreement')
-    plt.ylabel('Proportion')
-    plt.bar(['A1-A2', 'A1-A3', 'A2-A3'], [1 - prob_agreement_r1r2_wout_zero, 1 - prob_agreement_r1r3_wout_zero, 1 - prob_agreement_r2r3_wout_zero], bottom=[prob_agreement_r1r2_wout_zero, prob_agreement_r1r3_wout_zero, prob_agreement_r2r3_wout_zero], label='Disagreement')
+    plt.bar([r'\textbf{A1-A2}', r'\textbf{A1-A3}', r'\textbf{A2-A3}'], [prob_agreement_r1r2_wout_zero, prob_agreement_r1r3_wout_zero, prob_agreement_r2r3_wout_zero], label='Agreement')
+    plt.ylabel(r'\textbf{Proportion}')
+    plt.bar([r'\textbf{A1-A2}', r'\textbf{A1-A3}', r'\textbf{A2-A3}'], [1 - prob_agreement_r1r2_wout_zero, 1 - prob_agreement_r1r3_wout_zero, 1 - prob_agreement_r2r3_wout_zero], bottom=[prob_agreement_r1r2_wout_zero, prob_agreement_r1r3_wout_zero, prob_agreement_r2r3_wout_zero], label='Disagreement')
     plt.ylim(0, 1)
     plt.legend()
-    plt.savefig("agreement_disagreement_wout_zero.pdf")
+    plt.savefig("./plots/agreement_disagreement_wout_zero.pdf")
 
     plt.figure()
-    plt.bar(['A1-A2', 'A1-A3', 'A2-A3'], [prob_agreement_r1r2_hate_present, prob_agreement_r1r3_hate_present, prob_agreement_r2r3_hate_present], label='Agreement')
-    plt.ylabel('Proportion')
-    plt.bar(['A1-A2', 'A1-A3', 'A2-A3'], [1 - prob_agreement_r1r2_hate_present, 1 - prob_agreement_r1r3_hate_present, 1 - prob_agreement_r2r3_hate_present], bottom=[prob_agreement_r1r2_hate_present, prob_agreement_r1r3_hate_present, prob_agreement_r2r3_hate_present], label='Disagreement')
+    plt.bar([r'\textbf{A1-A2}', r'\textbf{A1-A3}', r'\textbf{A2-A3}'], [prob_agreement_r1r2_hate_present, prob_agreement_r1r3_hate_present, prob_agreement_r2r3_hate_present], label='Agreement')
+    plt.ylabel(r'\textbf{Proportion}')
+    plt.bar([r'\textbf{A1-A2}', r'\textbf{A1-A3}', r'\textbf{A2-A3}'], [1 - prob_agreement_r1r2_hate_present, 1 - prob_agreement_r1r3_hate_present, 1 - prob_agreement_r2r3_hate_present], bottom=[prob_agreement_r1r2_hate_present, prob_agreement_r1r3_hate_present, prob_agreement_r2r3_hate_present], label='Disagreement')
     plt.ylim(0, 1)
     plt.legend()
-    plt.savefig("agreement_disagreement_hate_present.pdf")
+    plt.savefig("./plots/agreement_disagreement_hate_present.pdf")
 
 
 

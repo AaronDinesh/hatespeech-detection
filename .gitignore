@@ -20,3 +20,7 @@ external/vilio/
 **/checkpoints/
 **/lora_weights/
 **/*.jsonl.gz
+**/*.csv
+**/*.jsonl
+**/*.png
+**/*.pdf
