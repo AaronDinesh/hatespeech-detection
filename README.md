@@ -1,6 +1,7 @@
 # Hate‑Speech Detection in Memes – EE‑559 Final Project (Group 32)
 
 **Authors:** Alix Benoit · Aaron Dinesh · Fabio Marcinno’
+
 **Course:** EE‑559 — Deep Learning, EPFL (Spring 2025)
 
 ---
@@ -22,11 +23,9 @@ Our codebase offers a **training & inference pipeline**, along with utilities fo
 ```text
 ├── app/               # Tools for quick graphing + manual labelling
 ├── llm_detection/     # Training & inference code for LM‑7B and LSI‑17B
-│   ├── configs/       # Hydra/Lightning configs for reproducible runs
-│   └── prompts/       # Prompt templates for zero‑shot inference
 ├── MultiModN/         # Fork of MMN with our MMHS150K pipeline additions
 ├── notebooks/         # Data exploration & result visualisation
-├── env_requirements/  # Conda + pip requirements for each sub‑project
+├── env_requirements/  # Conda + pip requirements for LLM pipelines
 └── README.md          # You are here 
 ```
 
