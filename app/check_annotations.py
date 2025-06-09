@@ -48,8 +48,9 @@ def main(args):
     ground_truth_df['id'] = ground_truth_df['tweet_url'].str.extract(r'/status/(\d+)')
 
     confusion_matrix = np.zeros((4, 4))
-    with open(f"{args.split}/test_ids.txt", 'r') as f:
+    with open(f"{args.split}", 'r') as f:
         val_ids = set(line.strip() for line in tqdm.tqdm(f, desc="Building Val set"))
+    
     if args.annotation_path.endswith('.gz'):
         file_generator = json_generator_gz
     elif args.annotation_path.endswith('.csv'):
@@ -117,13 +118,27 @@ def main(args):
     print(f"Expected Agreement: {expected_agreement}")
     print(f"Cohen's Kappa: {(observed_agreement - expected_agreement) / (1-expected_agreement)}")
 
-    plt.figure(figsize=(6, 4))
+
+    plt.rcParams.update({
+    'text.usetex': True,                 # Use LaTeX for rendering (requires LaTeX installation)
+    'font.family': 'serif',
+    'font.size': 12,
+    'axes.titlesize': 14,
+    'axes.labelsize': 12,
+    'lines.linewidth': 2,
+    'lines.markersize': 4,              # Smaller markers
+    'figure.dpi': 300,
+    'figure.figsize': (6, 4)            # A4 report friendly
+    })
+
+
+
+    plt.figure()
     sns.heatmap(relative_confusion_matrix, cmap='flare', annot=True, fmt=".2f", cbar=True)
-    plt.title("Conditional Confusion Matrix (P(LM-7B | GT))")
     plt.xlabel("Model Prediction")
     plt.ylabel("Ground Truth Label")
     plt.tight_layout()
-    plt.savefig(f"{args.graph_name}.png", dpi=300)
+    plt.savefig(f"./plots/{args.graph_name}.pdf", dpi=300)
     plt.show()
 
 
@@ -134,6 +149,6 @@ if __name__ == "__main__":
     parser.add_argument("--dataset-path", type=str, help="Path to the MMHS150K_GT.json file")
     parser.add_argument("--annotation-path", type=str, help="Path to the output JSONL file")
     parser.add_argument("--graph-name", type=str, help="Name of the graph")
-    parser.add_argument("--split", type=str)
+    parser.add_argument("--split", type=str, help="Path to the split to use")
     args = parser.parse_args()
     main(args)
