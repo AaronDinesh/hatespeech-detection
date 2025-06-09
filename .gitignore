@@ -1,6 +1,10 @@
 MMHS150K
 MMHS150K.zip
 papers
+figs
+*.csv
+*.png
+*.jsonl
 .ipynb_checkpoints/
 /data*
 **/.venv
