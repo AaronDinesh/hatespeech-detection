@@ -92,7 +92,17 @@ def send_prompt(client: OpenAI, message: tuple[str, dict], model:str, response_f
             parsed = postDescription.model_validate_json(response.choices[0].message.content)
             
             if(parsed.input_labels < 0 or parsed.input_labels > 3):
-                raise pydantic.ValidationError
+                raise pydantic.ValidationError.from_exception_data(
+                                title="Response Validation",
+                                line_errors=[
+                                    {
+                                        'type': 'missing',
+                                        'loc': ('response', 'input_labels'),
+                                        'msg': 'Output is None',
+                                        'input': None,
+                                    }
+                                ]
+                )
             
             return (message[0], parsed.model_dump())
         except pydantic.ValidationError:
@@ -177,13 +187,24 @@ def main(args):
                     if line['id'] in unique_ids:
 
                         if line['response']['input_labels'] is None:
-                            raise pydantic.ValidationError
+                            raise pydantic.ValidationError.from_exception_data(
+                                title="Response Validation",
+                                line_errors=[
+                                    {
+                                        'type': 'missing',
+                                        'loc': ('response', 'input_labels'),
+                                        'msg': 'Output is None',
+                                        'input': None,
+                                    }
+                                ]
+                            )
                     
                         g.write(json.dumps(line) + "\n")
 
                         #Only after we write it to the file we want to remove that id from the set. 
                         unique_ids.remove(line['id'])
                 except pydantic.ValidationError as e:
+                    print(hateful_score)
                     if hateful_score:
                         response = int(line['response']['input_labels'])
                         if response < 0:

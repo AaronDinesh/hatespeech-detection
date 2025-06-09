@@ -37,11 +37,11 @@ schema at the top of the file. Both files accept the same command line options s
 listed here. The other file will be with the exact same commands. Run the file by executing the following command:
 (First time run)
 ```
-uv run RCP_LLM_inference.py --input-file <PATH_TO_JSONL_GZ_FILE> --output-dir <PATH_TO_OUTPUT_DIR> --model-name <RCP_MODEL_NAME>
+uv run RCP_LLM_inference_with_score.py --input-file <PATH_TO_JSONL_GZ_FILE> --output-dir <PATH_TO_OUTPUT_DIR> --model <RCP_MODEL_NAME>
 ```
 (If restarting from a previously interrupted run)
 ```
-uv run RCP_LLM_inference.py --input-file <PATH_TO_JSONL_GZ_FILE> --output-dir <PATH_TO_OUTPUT_DIR> --model-name <RCP_MODEL_NAME> --restart --results-file <PATH_TO_OUTPUT_RESULTS_JSONL_GZ_FILE>
+uv run RCP_LLM_inference_with_score.py --input-file <PATH_TO_JSONL_GZ_FILE> --output-dir <PATH_TO_OUTPUT_DIR> --model <RCP_MODEL_NAME> --restart --results-file <PATH_TO_OUTPUT_RESULTS_JSONL_GZ_FILE>
 ```
 Since this runs asynchronously, you can also specify the max number of concurrent async jobs as well as the number of
 retries in case of error, but it is recommended to leave these values as is. Since there are ~150K prompts to process,
@@ -53,24 +53,17 @@ pydantic for your task. Currently the file is setup to verify the output when th
 from 0-4. This file can be run using:
 (To check for errors)
 ```
-uv run verify_output.py --file-path <PATH_TO_OUTPUT_RESULTS_JSONL_GZ_FILE>
+uv run verify_outputs.py --file-path <PATH_TO_OUTPUT_RESULTS_JSONL_GZ_FILE> 
 ```
 (To fix errors with occasional model re-prompt)
 ```
-uv run verify_output.py --file-path <PATH_TO_OUTPUT_RESULTS_JSONL_GZ_FILE> --fix-errors --fixed-file-path <PATH_TO_STORE_THE_FIXED_FILE> --model <RCP_MODEL_NAME> --hateful-score
+uv run verify_output.py --file-path <PATH_TO_OUTPUT_RESULTS_JSONL_GZ_FILE> --fix-errors --fixed-file-path <PATH_TO_STORE_THE_FIXED_FILE> --model <RCP_MODEL_NAME> --hateful-score --prompts-file <PATH_TO_PROMPTS_FILE>python 
 ```
 
-Finally, you may also want to run the ```compute_metrics.py``` file. This will read the output results.jsonl.gz file and
-and the type of label in the results.jsonl.gz file and compute the metrics. This file can be run using:
-```
-uv run compute_metrics.py --file-path <PATH_TO_OUTPUT_RESULTS_JSONL_GZ_FILE> --hateful-score
-```
-The relevant metrics will then be printed out to the terminal. This can then be brought into your own python script to
-plot the results. The ```compute_metrics.py``` file also performs some validation so make sure you create your own
-pydantic validation class.
+Finally, you may want to compute the metrics for the LLM_output. This can be done using the ```check_annotations.py```
+file in the ```app``` directory. 
 
 The arguments for each file are well documented inside the file so consult them if unsure what each argument does.
-
 
 # RCP LLM Fine-tuning
 First make sure that you have the ```.env``` file and populate it as you did above. You then need to create the docker
@@ -85,15 +78,7 @@ docker push registry.rcp.epfl.ch/ee-559-<USERNAME>/<IMAGE_NAME>
 
 Once the image is pushed then ssh onto the RCP Jumphost and run the following command to finetune the Llava model:
 ```
-runai submit --image registry.rcp.epfl.ch/ee-559-dinesh/my-toolbox-llava:v0.3 \
---pvc home:/mnt/rcp \
--e HOME=${HOME} \
---pvc course-ee-559-scratch:/scratch \
---gpu 8 \
---node-pools default \
---large-shm \
---memory 32G \
---command -- python /mnt/rcp/hatespeech-detection/llm_detection/LlaVA_finetuning.py --dataset-json-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/MMHS150K_GT.json --image-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/img_resized/ --image-text-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/img_txt/ --splits-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/splits/ --model-path=/scratch/models/student_models/hf_models/llava-hf/llava-v1.6-mistral-7b-hf/models--llava-hf--llava-v1.6-mistral-7b-hf/snapshots/52320fb52229c8d942b1dcb8b63b3dc8087bc83b/ --env-file=/mnt/rcp/hatespeech-detection/llm_detection/.env --model-save-path=/mnt/rcp/hatespeech-detection/llm_detection/lora_weights/ --checkpoint-save-path=/mnt/rcp/hatespeech-detection/llm_detection/checkpoints --resume-from=/mnt/rcp/hatespeech-detection/llm_detection/checkpoints/epochepoch\=03-maeval_mae\=0.8750.ckpt
+runai submit --image registry.rcp.epfl.ch/ee-559-dinesh/my-toolbox-llava:v0.3 --pvc home:/mnt/rcp -e HOME=${HOME} --pvc course-ee-559-scratch:/scratch --gpu 8 --node-pools default --large-shm --memory 32G --command -- python /mnt/rcp/hatespeech-detection/llm_detection/LlaVA_finetuning.py --dataset-json-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/MMHS150K_GT.json --image-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/img_resized/ --image-text-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/img_txt/ --splits-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/splits/ --model-path=/scratch/models/student_models/hf_models/llava-hf/llava-v1.6-mistral-7b-hf/models--llava-hf--llava-v1.6-mistral-7b-hf/snapshots/52320fb52229c8d942b1dcb8b63b3dc8087bc83b/ --env-file=/mnt/rcp/hatespeech-detection/llm_detection/.env --model-save-path=/mnt/rcp/hatespeech-detection/llm_detection/lora_weights/ --checkpoint-save-path=/mnt/rcp/hatespeech-detection/llm_detection/checkpoints --resume-from=/mnt/rcp/hatespeech-detection/llm_detection/checkpoints/epochepoch\=03-maeval_mae\=0.8750.ckpt
 ```
 The command above will try to resume from a checkpoint file that you give it and it saves one every epoch. The number of
 GPUs can be any number you want, the fine-tuning script makes use of model parallelism to greatly speed up training when
@@ -101,14 +86,7 @@ compared with a single GPU.
 
 To run inference on the Llava model you can run the following command:
 ```
-runai submit --image registry.rcp.epfl.ch/ee-559-dinesh/my-toolbox-llava:v0.3 \
---pvc home:/mnt/rcp -e HOME=${HOME} \
---pvc course-ee-559-scratch:/scratch \
---gpu 1 \
---node-pools default \
---large-shm \
---memory 32G \
---command -- python /mnt/rcp/hatespeech-detection/llm_detection/Llava_inference_Lightning_Inference.py --dataset-json-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/MMHS150K_GT.json --image-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/img_resized/ --image-text-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/img_txt/ --splits-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/splits/ --base-model-path=/scratch/models/student_models/hf_models/llava-hf/llava-v1.6-mistral-7b-hf/models--llava-hf--llava-v1.6-mistral-7b-hf/snapshots/52320fb52229c8d942b1dcb8b63b3dc8087bc83b/ --adapter-path=/mnt/rcp/hatespeech-detection/llm_detection/lora_weights/3eph-unbalanced-dataset/ --output-metrics=/mnt/rcp/hatespeech-detection/llm_detection/balanced-llava.json --llm-output=/mnt/rcp/hatespeech-detection/llm_detection/llava-preds-balanced-e7.jsonl.gz --checkpoint-file=/mnt/rcp/hatespeech-detection/llm_detection/checkpoints/epochepoch\=07-maeval_mae\=0.7250.ckpt
+runai submit --image registry.rcp.epfl.ch/ee-559-dinesh/my-toolbox-llava:v0.3 --pvc home:/mnt/rcp -e HOME=${HOME} --pvc course-ee-559-scratch:/scratch --gpu 1 --node-pools default --large-shm --memory 32G --command -- python /mnt/rcp/hatespeech-detection/llm_detection/Llava_inference_Lightning_Inference.py --dataset-json-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/MMHS150K_GT.json --image-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/img_resized/ --image-text-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/img_txt/ --splits-path=/mnt/rcp/hatespeech-detection/data/MMHS150K/splits/ --base-model-path=/scratch/models/student_models/hf_models/llava-hf/llava-v1.6-mistral-7b-hf/models--llava-hf--llava-v1.6-mistral-7b-hf/snapshots/52320fb52229c8d942b1dcb8b63b3dc8087bc83b/ --adapter-path=/mnt/rcp/hatespeech-detection/llm_detection/lora_weights/3eph-unbalanced-dataset/ --output-metrics=/mnt/rcp/hatespeech-detection/llm_detection/balanced-llava.json --llm-output=/mnt/rcp/hatespeech-detection/llm_detection/llava-preds-balanced-e7.jsonl.gz --checkpoint-file=/mnt/rcp/hatespeech-detection/llm_detection/checkpoints/epochepoch\=07-maeval_mae\=0.7250.ckpt
 ```
 This will load a particular checkpoint using the ```--checkpoint-file``` argument and then run inference. The output is
 saved to the path specified. 

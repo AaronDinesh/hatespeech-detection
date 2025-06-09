@@ -110,65 +110,69 @@ def main(args):
     relative_r1r3 = normalized_r1r3 / np.sum(normalized_r1r3, axis=0, keepdims=True)
     relative_r2r3 = normalized_r2r3 / np.sum(normalized_r2r3, axis=0, keepdims=True)
 
-    plt.figure(figsize=(6, 4))
+
+    # === SETTINGS FOR LATEX-READY PLOT ===
+    plt.rcParams.update({
+        'text.usetex': True,                 # Use LaTeX for rendering (requires LaTeX installation)
+        'font.family': 'serif',
+        'font.size': 14,
+        'axes.titlesize': 16,
+        'axes.labelsize': 14,
+        'lines.linewidth': 2,
+        'lines.markersize': 4,              # Smaller markers
+        'figure.dpi': 300,
+        'figure.figsize': (6, 4)            # A4 report friendly
+    })
+
+    plt.figure()
     sns.heatmap(relative_r1r2, annot=True, xticklabels=Allowed_labels, yticklabels=Allowed_labels, cmap="flare", cbar=True, fmt=".2f")
-    plt.title("Conditional Agreement between Researcher 1 and 2 (P(R2 | R1))")
     plt.xlabel("Researcher 2")
     plt.ylabel("Researcher 1")
     plt.tight_layout()
-    plt.savefig("r1r2.png")
-    plt.show()
-
+    plt.savefig("r1r2_cond_aggrement.pdf")
+    
+    plt.figure()
     sns.heatmap(relative_r1r3, annot=True, xticklabels=Allowed_labels, yticklabels=Allowed_labels, cmap="flare", cbar=True, fmt=".2f")
-    plt.title("Conditional Agreement between Researcher 1 and 3 (P(R3 | R1))")
     plt.xlabel("Researcher 3")
     plt.ylabel("Researcher 1")
     plt.tight_layout()
-    plt.savefig("r1r3.png")
-    plt.show()
+    plt.savefig("r1r3_cond_agreement.pdf")
 
-
+    plt.figure()
     sns.heatmap(relative_r2r3, annot=True, xticklabels=Allowed_labels, yticklabels=Allowed_labels, cmap="flare", cbar=True, fmt=".2f")
-    plt.title("Conditional Agreement between Researcher 2 and 3 (P(R3 | R2))")
     plt.xlabel("Researcher 3")
     plt.ylabel("Researcher 2")
     plt.tight_layout()
-    plt.savefig("r2r3.png")
-    plt.show()
+    plt.savefig("r2r3_cond_aggrement.pdf")
 
     # Use seaborn's theme for styling
     sns.set_theme(style="whitegrid")
 
     # Plot the agreement segment
+    plt.figure()
     plt.bar(['A1-A2', 'A1-A3', 'A2-A3'], [prob_agreement_r1r2, prob_agreement_r1r3, prob_agreement_r2r3], label='Agreement')
     # Plot the disagreement segment stacked on top
     plt.bar(['A1-A2', 'A1-A3', 'A2-A3'], [1 - prob_agreement_r1r2, 1 - prob_agreement_r1r3, 1 - prob_agreement_r2r3], bottom=[prob_agreement_r1r2, prob_agreement_r1r3, prob_agreement_r2r3], label='Disagreement')
     plt.ylabel('Proportion')
     plt.ylim(0, 1)
-    plt.title('Agreement vs Disagreement between Annotators on Labels')
     plt.legend()
-    plt.savefig("agreement_disagreement.png")
-    plt.show()
+    plt.savefig("agreement_disagreement.pdf")
 
+    plt.figure()
     plt.bar(['A1-A2', 'A1-A3', 'A2-A3'], [prob_agreement_r1r2_wout_zero, prob_agreement_r1r3_wout_zero, prob_agreement_r2r3_wout_zero], label='Agreement')
     plt.ylabel('Proportion')
     plt.bar(['A1-A2', 'A1-A3', 'A2-A3'], [1 - prob_agreement_r1r2_wout_zero, 1 - prob_agreement_r1r3_wout_zero, 1 - prob_agreement_r2r3_wout_zero], bottom=[prob_agreement_r1r2_wout_zero, prob_agreement_r1r3_wout_zero, prob_agreement_r2r3_wout_zero], label='Disagreement')
     plt.ylim(0, 1)
-    plt.title('Agreement vs Disagreement between Annotators on Labels (excluding NotHate)')
     plt.legend()
-    plt.savefig("agreement_disagreement_wout_zero.png")
-    plt.show()
+    plt.savefig("agreement_disagreement_wout_zero.pdf")
 
+    plt.figure()
     plt.bar(['A1-A2', 'A1-A3', 'A2-A3'], [prob_agreement_r1r2_hate_present, prob_agreement_r1r3_hate_present, prob_agreement_r2r3_hate_present], label='Agreement')
     plt.ylabel('Proportion')
     plt.bar(['A1-A2', 'A1-A3', 'A2-A3'], [1 - prob_agreement_r1r2_hate_present, 1 - prob_agreement_r1r3_hate_present, 1 - prob_agreement_r2r3_hate_present], bottom=[prob_agreement_r1r2_hate_present, prob_agreement_r1r3_hate_present, prob_agreement_r2r3_hate_present], label='Disagreement')
     plt.ylim(0, 1)
-    plt.title('Agreement vs Disagreement between Annotators on the Presence of Hate or Not Hate')
     plt.legend()
-    plt.savefig("agreement_disagreement_hate_present.png")
-    plt.show()
-
-
+    plt.savefig("agreement_disagreement_hate_present.pdf")
 
 
 
