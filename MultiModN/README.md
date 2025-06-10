@@ -1,4 +1,4 @@
-# CHANGES FROM ORIGINAL by EE-559 Group 32
+# CHANGES FROM ORIGINAL by EE-559 Group 38
 This repository is adapted from the original MultiModN repository, details found below.
 We added some requirements, a directory to create the necessary docker image to run on the EPFL RCP Cluster, a dataset class for MMHS150K, we added a new training and testing function modified to suit our needs (such as adding mixed precision training), and added an mmhs directory within the pipelines directory with our inference and training files.
 
