@@ -1,4 +1,4 @@
-# Hate‑Speech Detection in Memes – EE‑559 Final Project (Group 32)
+# Hate‑Speech Detection in Memes – EE‑559 Final Project (Group 38)
 
 **Authors:** Alix Benoit · Aaron Dinesh · Fabio Marcinno’
 
